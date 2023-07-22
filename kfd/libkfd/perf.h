@@ -75,6 +75,22 @@ const struct kernelcache_addresses kcs[] = {
         .vm_page_array_beginning_addr = 0xfffffff0078e6128,
         .vm_page_array_ending_addr = 0xfffffff00a456988,
         .vm_first_phys_ppnum = 0xfffffff00a456990,
+    },
+    // From the iOS 16.1.2 kernelcache for the iPhone 14 Pro.
+    {
+        .kernel_base = 0xfffffff007004000,
+        .vn_kqfilter = 0xfffffff007F101A0,
+        .ptov_table = 0xfffffff0077FFA18,
+        .gVirtBase = 0xFFFFFF007849F38,
+        .gPhysBase = 0xFFFFFFF00784BD50,
+        .gPhysSize = 0xFFFFFFF00784BD58,
+        .perfmon_devices = 0xFFFFFFF00A34C310,
+        .perfmon_dev_open = 0xFFFFFFF007EC0288,
+        .cdevsw = 0xFFFFFFF00A311168,
+        .vm_pages = 0xFFFFFFF0077FC6D8,
+        .vm_page_array_beginning_addr = 0xFFFFFFF0077FE9D8,
+        .vm_page_array_ending_addr = 0xFFFFFFF00A34B778,
+        .vm_first_phys_ppnum = 0xFFFFFFF00A34B780,
     }
 };
 
@@ -157,6 +173,10 @@ void perf_init(struct kfd* kfd)
         }
         case ios_16_5_1: {
             kfd->perf.kernelcache_index = 3;
+            break;
+        }
+        case ios_16_1_2: {
+            kfd->perf.kernelcache_index = 4;
             break;
         }
         default: {

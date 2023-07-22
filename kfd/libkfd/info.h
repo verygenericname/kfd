@@ -203,6 +203,11 @@ void info_init(struct kfd* kfd)
             kfd->info.env.ios = false;
             break;
         }
+        case ios_16_1_2: {
+            kfd->info.env.vid = 0;
+            kfd->info.env.ios = true;
+            break;
+        }
         default: {
             assert_false("unsupported osversion");
         }
