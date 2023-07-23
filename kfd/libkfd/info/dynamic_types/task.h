@@ -18,6 +18,7 @@ const struct task task_versions[] = {
     { .map = 0x28, .threads_next = 0x58, .threads_prev = 0x60, .itk_space = 0x300, .object_size = 0x640 },
     { .map = 0x28, .threads_next = 0x58, .threads_prev = 0x60, .itk_space = 0x300, .object_size = 0x658 },
     { .map = 0x28, .threads_next = 0x58, .threads_prev = 0x60, .itk_space = 0x300, .object_size = 0x658 },
+    { .map = 0x28, .threads_next = 0x58, .threads_prev = 0x60, .itk_space = 0x300, .object_size = 0x648 },
 };
 
 typedef u64 task_map_t;

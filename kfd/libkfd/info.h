@@ -204,7 +204,7 @@ void info_init(struct kfd* kfd)
             break;
         }
         case ios_16_1_2: {
-            kfd->info.env.vid = 0;
+            kfd->info.env.vid = 4;
             kfd->info.env.ios = true;
             break;
         }
