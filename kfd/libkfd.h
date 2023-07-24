@@ -381,14 +381,16 @@ uint64_t funVnode(u64 kfd, uint64_t proc, char* filename) {
     kwrite32(kfd, vnode + off_vnode_vflags, (v_flags &= ~VISSHADOW));
     
     printf("[i] is File exist?: %d\n", access(filename, F_OK));
-
-    //restore vnode iocount, usecount
-    if(kread32(kfd, vnode + off_vnode_usecount) > 0)
-        kwrite32(kfd, vnode + off_vnode_usecount, usecount - 1);
-    if(kread32(kfd, vnode + off_vnode_iocount) > 0)
-        kwrite32(kfd, vnode + off_vnode_iocount, iocount - 1);
     
     close(file_index);
+    
+    //restore vnode iocount, usecount
+    usecount = kread32(kfd, vnode + off_vnode_usecount);
+    iocount = kread32(kfd, vnode + off_vnode_iocount);
+    if(usecount > 0)
+        kwrite32(kfd, vnode + off_vnode_usecount, usecount - 1);
+    if(iocount > 0)
+        kwrite32(kfd, vnode + off_vnode_iocount, iocount - 1);
 
     return 0;
 }
