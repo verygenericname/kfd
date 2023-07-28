@@ -811,21 +811,10 @@ uint64_t funVnodeResearch2(u64 kfd, char* file) {
     printf("[i] %s to_vnode->v_writecount: %d\n", file, kread32(kfd, to_vnode + off_vnode_v_writecount));
     kwrite32(kfd, to_vnode + off_vnode_v_writecount, kread32(kfd, to_vnode + off_vnode_v_writecount)+1);
     
-//    uint64_t to_v_mount_pac = kread64(kfd, to_vnode + off_vnode_v_mount);
-//    uint64_t to_v_mount = to_v_mount_pac | 0xffffff8000000000;
-//    printf("[i] %s to_vnode->v_mount: 0x%llx\n", file, to_v_mount);
-//    uint64_t to_devvp = kread64(kfd, to_v_mount + off_mount_mnt_devvp);
-//    printf("[i] %s to_vnode->v_mount->mnt_devvp: 0x%llx\n", file, to_devvp);
-//
-    
-    
-    
-    sleep(1);
     const char* data = "AAAAAAAAAAAAAAAAAAAAAAA";
     
     size_t data_len = strlen(data);
 
-    // 파일의 크기를 가져옵니다.
     off_t file_size = lseek(file_index, 0, SEEK_END);
     if (file_size == -1) {
         perror("Failed lseek.");
@@ -841,15 +830,11 @@ uint64_t funVnodeResearch2(u64 kfd, char* file) {
     }
     
     memcpy(mapped, data, data_len);
-//    if(write(file_index, content, strlen(content)) == -1) {
-//        perror("file write error");
-//    }
     
     munmap(mapped, file_size);
     
     
-//    kwrite32(kfd, to_v_mount + 0x70, to_m_flag);
-//    kwrite16(kfd, to_v_mount + off_vnode_v_type, to_vnode_vtype);
+    kwrite32(kfd, to_v_mount + 0x70, to_m_flag);
     
     close(file_index);
 
@@ -936,13 +921,13 @@ int do_fun(u64 kfd) {
 //    [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
 //    [@"Hello, this is an example file!" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
     
-    //NEW WAY, open with O_RDONLY AND PATCH TO O_RDWR
-    funVnodeChown(kfd, "/System/Library/CoreServices/SystemVersion.plist", 501, 501);
-    funVnodeChmod(kfd, "/System/Library/CoreServices/SystemVersion.plist", 0107777);
-    funVnodeResearch2(kfd, "/System/Library/CoreServices/SystemVersion.plist");
+    //NEW WAY, open with O_RDONLY AND PATCH TO O_RDWR, Actually we don't need to use funVnodeChown, funVndeChmod.
+//    funVnodeChown(kfd, "/System/Library/CoreServices/SystemVersion.plist", 501, 501);
+//    funVnodeChmod(kfd, "/System/Library/CoreServices/SystemVersion.plist", 0107777);
+    funVnodeResearch2(kfd, "/System/Library/Audio/UISounds/photoShutter.caf");
     //Restore permission
-    funVnodeChown(kfd, "/System/Library/CoreServices/SystemVersion.plist", 0, 0);
-    funVnodeChmod(kfd, "/System/Library/CoreServices/SystemVersion.plist", 0100444);
+//    funVnodeChown(kfd, "/System/Library/CoreServices/SystemVersion.plist", 0, 0);
+//    funVnodeChmod(kfd, "/System/Library/CoreServices/SystemVersion.plist", 0100444);
     
 
     
