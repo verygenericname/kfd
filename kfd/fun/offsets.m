@@ -70,7 +70,7 @@ uint32_t off_specinfo_si_flags = 0;
 #define SYSTEM_VERSION_EQUAL_TO(v)                  ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] == NSOrderedSame)
 
 bool _offsets_init(void) {
-    if (SYSTEM_VERSION_EQUAL_TO(@"16.1") || SYSTEM_VERSION_EQUAL_TO(@"16.1.1") || SYSTEM_VERSION_EQUAL_TO(@"16.1.2")) {
+    if (SYSTEM_VERSION_EQUAL_TO(@"16.1") || SYSTEM_VERSION_EQUAL_TO(@"16.1.1") || SYSTEM_VERSION_EQUAL_TO(@"16.1.2") || SYSTEM_VERSION_EQUAL_TO(@"16.4.1")) {
         printf("[i] offsets selected for iOS 16.1.2\n");
         //iPhone 14 Pro 16.1.2 offsets
         
