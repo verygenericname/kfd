@@ -66,6 +66,7 @@ extern uint32_t off_mount_mnt_data;
 extern uint32_t off_mount_mnt_fsowner;
 extern uint32_t off_mount_mnt_fsgroup;
 extern uint32_t off_mount_mnt_devvp;
+extern uint32_t off_mount_mnt_flag;
 extern uint32_t off_specinfo_si_flags;
 extern uint32_t off_fg_flag;
 

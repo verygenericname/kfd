@@ -392,10 +392,10 @@ uint64_t funVnodeOverwriteFile(uint64_t kfd, char* to) {
     uint64_t to_v_mount_pac = kread64(kfd, findRootVnode(kfd) + off_vnode_v_mount);
     uint64_t to_v_mount = to_v_mount_pac | 0xffffff8000000000;
     
-    uint32_t to_m_flag = kread32(kfd, to_v_mount + 0x70);
+    uint32_t to_m_flag = kread32(kfd, to_v_mount + off_mount_mnt_flag);
     
 #define MNT_RDONLY      0x00000001      /* read only filesystem */
-    kwrite32(kfd, to_v_mount + 0x70, to_m_flag & ~MNT_RDONLY);
+    kwrite32(kfd, to_v_mount + off_mount_mnt_flag, to_m_flag & ~MNT_RDONLY);
     
     kwrite32(kfd, fileglob + off_fg_flag, O_ACCMODE);
     
@@ -425,7 +425,7 @@ uint64_t funVnodeOverwriteFile(uint64_t kfd, char* to) {
     munmap(mapped, file_size);
     
     
-    kwrite32(kfd, to_v_mount + 0x70, to_m_flag);
+    kwrite32(kfd, to_v_mount + off_mount_mnt_flag, to_m_flag);
     
     close(file_index);
 
