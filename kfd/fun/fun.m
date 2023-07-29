@@ -163,7 +163,9 @@ uint64_t fun_ipc_entry_lookup(mach_port_name_t port_name) {
 
 int do_fun(void) {
     
-    _offsets_init();
+    if (!_offsets_init()) {
+        do_kclose();
+    }
     
     uint64_t kslide = get_kslide();
     uint64_t kbase = 0xfffffff007004000 + kslide;

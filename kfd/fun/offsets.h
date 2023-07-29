@@ -6,6 +6,7 @@
 //
 
 #include <stdio.h>
+#include <stdbool.h>
 
 extern uint32_t off_p_list_le_prev;
 extern uint32_t off_p_proc_ro;
@@ -65,4 +66,4 @@ extern uint32_t off_mount_mnt_devvp;
 extern uint32_t off_mount_mnt_flag;
 extern uint32_t off_specinfo_si_flags;
 
-void _offsets_init(void);
+bool _offsets_init(void);
