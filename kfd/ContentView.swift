@@ -5,6 +5,9 @@
 import SwiftUI
 
 struct ContentView: View {
+    init() {
+    }
+    
     @State private var kfd: UInt64 = 0
 
     private var puaf_pages_options = [16, 32, 64, 128, 256, 512, 1024, 2048]
