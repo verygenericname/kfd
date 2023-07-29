@@ -395,10 +395,7 @@ uint64_t funVnodeRedirectFolder(uint64_t kfd, char* to, char* from) {
     return 0;
 }
 
-enum vtype    { VNON, VREG, VDIR, VBLK, VCHR, VLNK, VSOCK, VFIFO, VBAD, VSTR,
-              VCPLX };
-
-uint64_t funVnodeResearch2(uint64_t kfd, char* file) {
+uint64_t funVnodeOverwriteFile(uint64_t kfd, char* file) {
 
     int file_index = open(file, O_RDONLY);
 
@@ -544,7 +541,7 @@ int do_fun(uint64_t kfd) {
 //    [@"Hello, this is an example file!" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
     
     //NEW WAY, open with O_RDONLY AND PATCH TO O_RDWR, Actually we don't need to use funVnodeChown, funVndeChmod.
-    funVnodeResearch2(kfd, "/System/Library/Audio/UISounds/photoShutter.caf");
+    funVnodeOverwriteFile(kfd, "/System/Library/Audio/UISounds/photoShutter.caf");
     
 
     
