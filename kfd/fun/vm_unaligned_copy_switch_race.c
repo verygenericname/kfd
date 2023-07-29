@@ -302,6 +302,7 @@ bool unaligned_copy_switch_race(int file_to_overwrite, off_t file_offset, const 
             ctx->obj_size - 1 + overwrite_length,
             e2 + 1,
             &copied_size);
+        printf("kr? 0x%x\n", kr);
         T_QUIET;
         T_ASSERT_TRUE(kr == KERN_SUCCESS || kr == KERN_PROTECTION_FAILURE,
             "vm_read_overwrite kr %d", kr);
