@@ -42,7 +42,7 @@ extern uint32_t off_cr_gmuid;
 extern uint32_t off_cr_flags;
 extern uint32_t off_task_t_flags;
 extern uint32_t off_fd_ofiles;
-extern uint32_t off_fp_fglob;
+extern uint32_t off_fp_glob;
 extern uint32_t off_fg_data;
 extern uint32_t off_vnode_v_iocount;
 extern uint32_t off_vnode_v_usecount;

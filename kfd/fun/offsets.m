@@ -44,7 +44,7 @@ uint32_t off_cr_gmuid = 0;
 uint32_t off_cr_flags = 0;
 uint32_t off_task_t_flags = 0;
 uint32_t off_fd_ofiles = 0;
-uint32_t off_fp_fglob = 0;
+uint32_t off_fp_glob = 0;
 uint32_t off_fg_data = 0;
 uint32_t off_vnode_v_iocount = 0;
 uint32_t off_vnode_v_usecount = 0;
@@ -125,7 +125,7 @@ void _offsets_init(void) {
         off_task_t_flags = 0x3D0;
         
         off_fd_ofiles = 0;
-        off_fp_fglob = 0x10;
+        off_fp_glob = 0x10;
         off_fg_data = 0x38;
         off_vnode_v_iocount = 0x64;
         off_vnode_v_usecount = 0x60;
