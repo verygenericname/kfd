@@ -204,8 +204,13 @@ int do_fun(void) {
 //    funVnodeOverwriteFile("/System/Library/Audio/UISounds/photoShutter.caf", [NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/AAAA.bin"].UTF8String);
 //
     grant_full_disk_access(^(NSError* error) {
-        NSLog(@"[-] grant_full_disk_access returned error: %@", error);
+        if(error != nil)
+            NSLog(@"[-] grant_full_disk_access returned error: %@", error);
     });
+    
+    NSArray* dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:@"/var/mobile" error:NULL];
+    NSLog(@"/var/mobile directory list: %@", dirs);
+    
 //    patch_installd();
 
         
