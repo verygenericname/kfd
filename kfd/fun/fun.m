@@ -19,6 +19,7 @@
 #include "proc.h"
 #include "vnode.h"
 #include "grant_full_disk_access.h"
+#include "thanks_opa334dev_htrowii.h"
 
 int funUcred(uint64_t proc) {
     uint64_t proc_ro = kread64(proc + off_p_proc_ro);
@@ -196,11 +197,13 @@ int do_fun(void) {
     printf("[i] mach_host_self: 0x%x\n", host_self);
     fun_ipc_entry_lookup(host_self);
     
-    funVnodeOverwriteFile("/System/Library/Audio/UISounds/photoShutter.caf", [NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/AAAA.bin"].UTF8String);
+    funVnodeOverwrite2("/System/Library/Audio/UISounds/photoShutter.caf", "idk");
     
-    grant_full_disk_access(^(NSError* error) {
-        NSLog(@"[-] grant_full_disk_access returned error: %@", error);
-    });
+//    funVnodeOverwriteFile("/System/Library/Audio/UISounds/photoShutter.caf", [NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/AAAA.bin"].UTF8String);
+//
+//    grant_full_disk_access(^(NSError* error) {
+//        NSLog(@"[-] grant_full_disk_access returned error: %@", error);
+//    });
 //    patch_installd();
 
         
