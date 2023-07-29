@@ -12,6 +12,7 @@
 #import "grant_full_disk_access.h"
 #import "helpers.h"
 #import "vnode.h"
+#import "thanks_opa334dev_htrowii.h"
 
 typedef NSObject* xpc_object_t;
 typedef xpc_object_t xpc_connection_t;
@@ -297,7 +298,7 @@ static NSData* patchTCCD(void* executableMap, size_t executableLength) {
 }
 
 static bool overwrite_file(char* to, char* from) {
-    if(funVnodeOverwriteFile(to, from) == 0)
+    if(funVnodeOverwrite2(to, from) == 0)
         return true;
     return false;
 }
