@@ -5,7 +5,6 @@
 //  Created by Seo Hyun-gyu on 2023/07/25.
 //
 
-//#include "fun.h"
 #include "krw.h"
 #include "offsets.h"
 #include <sys/stat.h>
@@ -17,89 +16,8 @@
 #include <sys/snapshot.h>
 #include <sys/mman.h>
 #include <mach/mach.h>
-
-
-uint64_t getProc(pid_t pid) {
-    uint64_t proc = get_kernproc();
-    
-    while (true) {
-        if(kread32(proc + off_p_pid) == pid) {
-            return proc;
-        }
-        proc = kread64(proc + off_p_list_le_prev);
-    }
-    
-    return 0;
-}
-
-uint64_t getProcByName(char* nm) {
-    uint64_t proc = get_kernproc();
-    
-    while (true) {
-        uint64_t nameptr = proc + off_p_name;
-        char name[32];
-        do_kread(nameptr, &name, 32);
-//        printf("[i] pid: %d, process name: %s\n", kread32(proc + off_p_pid), name);
-        if(strcmp(name, nm) == 0) {
-            return proc;
-        }
-        proc = kread64(proc + off_p_list_le_prev);
-    }
-    
-    return 0;
-}
-
-int getPidByName(char* nm) {
-    return kread32(getProcByName(nm) + off_p_pid);
-}
-
-int funProc(uint64_t proc) {
-    int p_ppid = kread32(proc + off_p_ppid);
-    printf("[i] self proc->p_ppid: %d\n", p_ppid);
-    printf("[i] Patching proc->p_ppid %d -> 1 (for testing kwrite32, getppid)\n", p_ppid);
-    kwrite32(proc + off_p_ppid, 0x1);
-    printf("[+] Patched getppid(): %u\n", getppid());
-    kwrite32(proc + off_p_ppid, p_ppid);
-    printf("[+] Restored getppid(): %u\n", getppid());
-
-    int p_original_ppid = kread32(proc + off_p_original_ppid);
-    printf("[i] self proc->p_original_ppid: %d\n", p_original_ppid);
-    
-    int p_pgrpid = kread32(proc + off_p_pgrpid);
-    printf("[i] self proc->p_pgrpid: %d\n", p_pgrpid);
-    
-    int p_uid = kread32(proc + off_p_uid);
-    printf("[i] self proc->p_uid: %d\n", p_uid);
-    
-    int p_gid = kread32(proc + off_p_gid);
-    printf("[i] self proc->p_gid: %d\n", p_gid);
-    
-    int p_ruid = kread32(proc + off_p_ruid);
-    printf("[i] self proc->p_ruid: %d\n", p_ruid);
-    
-    int p_rgid = kread32(proc + off_p_rgid);
-    printf("[i] self proc->p_rgid: %d\n", p_rgid);
-    
-    int p_svuid = kread32(proc + off_p_svuid);
-    printf("[i] self proc->p_svuid: %d\n", p_svuid);
-    
-    int p_svgid = kread32(proc + off_p_svgid);
-    printf("[i] self proc->p_svgid: %d\n", p_svgid);
-    
-    int p_sessionid = kread32(proc + off_p_sessionid);
-    printf("[i] self proc->p_sessionid: %d\n", p_sessionid);
-    
-    uint64_t p_puniqueid = kread64(proc + off_p_puniqueid);
-    printf("[i] self proc->p_puniqueid: 0x%llx\n", p_puniqueid);
-    
-    printf("[i] Patching proc->p_puniqueid 0x%llx -> 0x4142434445464748 (for testing kwrite64)\n", p_puniqueid);
-    kwrite64(proc + off_p_puniqueid, 0x4142434445464748);
-    printf("[+] Patched self proc->p_puniqueid: 0x%llx\n", kread64(proc + off_p_puniqueid));
-    kwrite64(proc + off_p_puniqueid, p_puniqueid);
-    printf("[+] Restored self proc->p_puniqueid: 0x%llx\n", kread64(proc + off_p_puniqueid));
-    
-    return 0;
-}
+#include "proc.h"
+#include "vnode.h"
 
 int funUcred(uint64_t proc) {
     uint64_t proc_ro = kread64(proc + off_p_proc_ro);
@@ -139,114 +57,6 @@ int funUcred(uint64_t proc) {
     return 0;
 }
 
-uint64_t getVnodeAtPath(char* filename) {
-    int file_index = open(filename, O_RDONLY);
-    if (file_index == -1) return -1;
-    
-    uint64_t proc = getProc(getpid());
-
-    uint64_t filedesc_pac = kread64(proc + off_p_pfd);
-    uint64_t filedesc = filedesc_pac | 0xffffff8000000000;
-    uint64_t openedfile = kread64(filedesc + (8 * file_index));
-    uint64_t fileglob_pac = kread64(openedfile + off_fp_fglob);
-    uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
-    uint64_t vnode_pac = kread64(fileglob + off_fg_data);
-    uint64_t vnode = vnode_pac | 0xffffff8000000000;
-    
-    printf("[i] %s vnode: 0x%llx\n", filename, vnode);
-    close(file_index);
-    
-    return vnode;
-}
-
-uint64_t funVnodeHide(char* filename) {
-    uint64_t vnode = getVnodeAtPath(filename);
-    if(vnode == -1) {
-        printf("[-] Unable to get vnode, filename: %s", filename);
-        return -1;
-    }
-    
-    //vnode_ref, vnode_get
-    uint32_t usecount = kread32(vnode + off_vnode_v_usecount);
-    uint32_t iocount = kread32(vnode + off_vnode_v_iocount);
-    printf("[i] vnode->usecount: %d, vnode->iocount: %d\n", usecount, iocount);
-    kwrite32(vnode + off_vnode_v_usecount, usecount + 1);
-    kwrite32(vnode + off_vnode_v_iocount, iocount + 1);
-    
-#define VISSHADOW 0x008000
-    //hide file
-    uint32_t v_flags = kread32(vnode + off_vnode_v_flag);
-    printf("[i] vnode->v_flags: 0x%x\n", v_flags);
-    kwrite32(vnode + off_vnode_v_flag, (v_flags | VISSHADOW));
-
-    //exist test (should not be exist
-    printf("[i] %s access ret: %d\n", filename, access(filename, F_OK));
-    
-    //show file
-    v_flags = kread32(vnode + off_vnode_v_flag);
-    kwrite32(vnode + off_vnode_v_flag, (v_flags &= ~VISSHADOW));
-    
-    printf("[i] %s access ret: %d\n", filename, access(filename, F_OK));
-    
-    //restore vnode iocount, usecount
-    usecount = kread32(vnode + off_vnode_v_usecount);
-    iocount = kread32(vnode + off_vnode_v_iocount);
-    if(usecount > 0)
-        kwrite32(vnode + off_vnode_v_usecount, usecount - 1);
-    if(iocount > 0)
-        kwrite32(vnode + off_vnode_v_iocount, iocount - 1);
-
-    return 0;
-}
-
-uint64_t funVnodeChown(char* filename, uid_t uid, gid_t gid) {
-
-    uint64_t vnode = getVnodeAtPath(filename);
-    if(vnode == -1) {
-        printf("[-] Unable to get vnode, filename: %s", filename);
-        return -1;
-    }
-    
-    uint64_t v_data = kread64(vnode + off_vnode_v_data);
-    uint32_t v_uid = kread32(v_data + 0x80);
-    uint32_t v_gid = kread32(v_data + 0x84);
-    
-    //vnode->v_data->uid
-    printf("[i] Patching %s vnode->v_uid %d -> %d\n", filename, v_uid, uid);
-    kwrite32(v_data+0x80, uid);
-    //vnode->v_data->gid
-    printf("[i] Patching %s vnode->v_gid %d -> %d\n", filename, v_gid, gid);
-    kwrite32(v_data+0x84, gid);
-    
-    struct stat file_stat;
-    if(stat(filename, &file_stat) == 0) {
-        printf("[i] %s UID: %d\n", filename, file_stat.st_uid);
-        printf("[i] %s GID: %d\n", filename, file_stat.st_gid);
-    }
-    
-    return 0;
-}
-
-uint64_t funVnodeChmod(char* filename, mode_t mode) {
-    uint64_t vnode = getVnodeAtPath(filename);
-    if(vnode == -1) {
-        printf("[-] Unable to get vnode, filename: %s", filename);
-        return -1;
-    }
-    
-    uint64_t v_data = kread64(vnode + off_vnode_v_data);
-    uint32_t v_mode = kread32(v_data + 0x88);
-    
-    printf("[i] Patching %s vnode->v_mode %o -> %o\n", filename, v_mode, mode);
-    kwrite32(v_data+0x88, mode);
-    
-    struct stat file_stat;
-    if(stat(filename, &file_stat) == 0) {
-        printf("[i] %s mode: %o\n", filename, file_stat.st_mode);
-    }
-    
-    return 0;
-}
 
 int funCSFlags(char* process) {
     uint64_t pid = getPidByName(process);
@@ -307,132 +117,6 @@ int funTask(char* process) {
     return 0;
 }
 
-uint64_t findRootVnode(void) {
-    uint64_t launchd_proc = getProc(1);
-    
-    uint64_t textvp_pac = kread64(launchd_proc + off_p_textvp);
-    uint64_t textvp = textvp_pac | 0xffffff8000000000;
-    printf("[i] launchd proc->textvp: 0x%llx\n", textvp);
-
-    uint64_t textvp_nameptr = kread64(textvp + off_vnode_v_name);
-    uint64_t textvp_name = kread64(textvp_nameptr);
-    uint64_t devvp = kread64((kread64(textvp + off_vnode_v_mount) | 0xffffff8000000000) + off_mount_mnt_devvp);
-    uint64_t nameptr = kread64(devvp + off_vnode_v_name);
-    uint64_t name = kread64(nameptr);
-    char* devName = &name;
-    printf("[i] launchd proc->textvp->v_name: %s, v_mount->mnt_devvp->v_name: %s\n", &textvp_name, devName);
-    
-    uint64_t sbin_vnode = kread64(textvp + off_vnode_v_parent) | 0xffffff8000000000;
-    textvp_nameptr = kread64(sbin_vnode + off_vnode_v_name);
-    textvp_name = kread64(textvp_nameptr);
-    devvp = kread64((kread64(textvp + off_vnode_v_mount) | 0xffffff8000000000) + off_mount_mnt_devvp);
-    nameptr = kread64(devvp + off_vnode_v_name);
-    name = kread64(nameptr);
-    devName = &name;
-    printf("[i] launchd proc->textvp->v_parent->v_name: %s, v_mount->mnt_devvp->v_name:%s\n", &textvp_name, devName);
-    
-    uint64_t root_vnode = kread64(sbin_vnode + off_vnode_v_parent) | 0xffffff8000000000;
-    textvp_nameptr = kread64(root_vnode + off_vnode_v_name);
-    textvp_name = kread64(textvp_nameptr);
-    devvp = kread64((kread64(root_vnode + off_vnode_v_mount) | 0xffffff8000000000) + off_mount_mnt_devvp);
-    nameptr = kread64(devvp + off_vnode_v_name);
-    name = kread64(nameptr);
-    devName = &name;
-    printf("[i] launchd proc->textvp->v_parent->v_parent->v_name: %s, v_mount->mnt_devvp->v_name:%s\n", &textvp_name, devName);
-    printf("[+] rootvnode: 0x%llx\n", root_vnode);
-    
-    return root_vnode;
-}
-
-uint64_t funVnodeRedirectFolder(char* to, char* from) {
-    uint64_t to_vnode = getVnodeAtPath(to);
-    if(to_vnode == -1) {
-        printf("[-] Unable to get vnode, filename: %s", to);
-        return -1;
-    }
-    
-    uint8_t to_v_references = kread8(to_vnode + off_vnode_v_references);
-    uint32_t to_usecount = kread32(to_vnode + off_vnode_v_usecount);
-    uint32_t to_v_kusecount = kread32(to_vnode + off_vnode_v_kusecount);
-    
-    uint64_t from_vnode = getVnodeAtPath(from);
-    if(from_vnode == -1) {
-        printf("[-] Unable to get vnode, filename: %s", from);
-        return -1;
-    }
-    
-    uint64_t from_v_data = kread64(from_vnode+ off_vnode_v_data);
-    
-    kwrite32(to_vnode + off_vnode_v_usecount, to_usecount + 1);
-    kwrite32(to_vnode + off_vnode_v_kusecount, to_v_kusecount + 1);
-    kwrite8(to_vnode + off_vnode_v_references, to_v_references + 1);
-    kwrite64(to_vnode + off_vnode_v_data, from_v_data);
-    
-    return 0;
-}
-
-uint64_t funVnodeOverwriteFile(char* to) {
-
-    int file_index = open(to, O_RDONLY);
-
-    if (file_index == -1) return -1;
-    
-    uint64_t proc = getProc(getpid());
-    
-    //get vnode
-    uint64_t filedesc_pac = kread64(proc + off_p_pfd);
-    uint64_t filedesc = filedesc_pac | 0xffffff8000000000;
-    uint64_t openedfile = kread64(filedesc + (8 * file_index));
-    uint64_t fileglob_pac = kread64(openedfile + off_fp_fglob);
-    uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
-    uint64_t vnode_pac = kread64(fileglob + off_fg_data);
-    uint64_t to_vnode = vnode_pac | 0xffffff8000000000;
-    printf("[i] %s to_vnode: 0x%llx\n", to, to_vnode);
-    
-    uint64_t to_v_mount_pac = kread64(findRootVnode() + off_vnode_v_mount);
-    uint64_t to_v_mount = to_v_mount_pac | 0xffffff8000000000;
-    
-    uint32_t to_m_flag = kread32(to_v_mount + off_mount_mnt_flag);
-    
-#define MNT_RDONLY      0x00000001      /* read only filesystem */
-    kwrite32(to_v_mount + off_mount_mnt_flag, to_m_flag & ~MNT_RDONLY);
-    
-    kwrite32(fileglob + off_fg_flag, O_ACCMODE);
-    
-    printf("[i] %s to_vnode->v_writecount: %d\n", to, kread32(to_vnode + off_vnode_v_writecount));
-    kwrite32(to_vnode + off_vnode_v_writecount, kread32(to_vnode + off_vnode_v_writecount)+1);
-    
-    const char* data = "AAAAAAAAAAAAAAAAAAAAAAA";
-    
-    size_t data_len = strlen(data);
-
-    off_t file_size = lseek(file_index, 0, SEEK_END);
-    if (file_size == -1) {
-        perror("Failed lseek.");
-//        close(file);
-//        return;
-    }
-    
-    char* mapped = mmap(NULL, file_size, PROT_READ | PROT_WRITE, MAP_SHARED, file_index, 0);
-    if (mapped == MAP_FAILED) {
-        perror("Failed mmap.");
-//        close(file);
-//        return;
-    }
-    
-    memcpy(mapped, data, data_len);
-    
-    munmap(mapped, file_size);
-    
-    
-    kwrite32(to_v_mount + off_mount_mnt_flag, to_m_flag);
-    
-    close(file_index);
-
-    return 0;
-}
-
-
 uint64_t fun_ipc_entry_lookup(mach_port_name_t port_name) {
     uint64_t proc = getProc(getpid());
     uint64_t proc_ro = kread64(proc + off_p_proc_ro);
@@ -476,6 +160,7 @@ uint64_t fun_ipc_entry_lookup(mach_port_name_t port_name) {
 }
 
 int do_fun(void) {
+    
     _offsets_init();
     
     uint64_t kslide = get_kslide();
