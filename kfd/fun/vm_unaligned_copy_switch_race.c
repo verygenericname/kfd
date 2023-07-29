@@ -144,7 +144,7 @@ bool unaligned_copy_switch_race(int file_to_overwrite, off_t file_offset, const 
         ro_addr,
         ctx->obj_size,
         TRUE,             /* set_maximum */
-        VM_PROT_READ);
+        VM_PROT_READ | VM_PROT_WRITE);
     T_QUIET; T_ASSERT_MACH_SUCCESS(kr, "vm_protect ro_addr");
     /* make sure we can't get read-write handle on that target memory */
     mo_size = ctx->obj_size;
@@ -160,7 +160,7 @@ bool unaligned_copy_switch_race(int file_to_overwrite, off_t file_offset, const 
     kr = mach_make_memory_entry_64(mach_task_self(),
         &mo_size,
         ro_addr,
-        MAP_MEM_VM_SHARE | VM_PROT_READ,
+        MAP_MEM_VM_SHARE | VM_PROT_READ | VM_PROT_WRITE,
         &ctx->mem_entry_ro,
         MACH_PORT_NULL);
     T_QUIET; T_ASSERT_MACH_SUCCESS(kr, "make_mem_entry() RO");
@@ -175,7 +175,7 @@ bool unaligned_copy_switch_race(int file_to_overwrite, off_t file_offset, const 
         ctx->mem_entry_ro,
         0,
         FALSE,         /* copy */
-        VM_PROT_READ,
+        VM_PROT_READ | VM_PROT_WRITE,
         VM_PROT_READ | VM_PROT_WRITE,
         VM_INHERIT_DEFAULT);
     T_QUIET; T_EXPECT_MACH_ERROR(kr, KERN_INVALID_RIGHT, " vm_map() mem_entry_rw");
@@ -258,6 +258,7 @@ bool unaligned_copy_switch_race(int file_to_overwrite, off_t file_offset, const 
     for (start = time(NULL), loops = 0;
         time(NULL) < start + duration;
         loops++) {
+        printf("loops: %d\n", loops);
         /* reserve space for our 2 contiguous allocations */
         e2 = 0;
         kr = vm_allocate(mach_task_self(),
