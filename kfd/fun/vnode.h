@@ -41,5 +41,6 @@ uint64_t funVnodeRedirectFolder(char* to, char* from);
 /*
 Description:
   Perform overwrite file data to file.
+  Only work when file size is 'lower or same' than original file size.
 */
 uint64_t funVnodeOverwriteFile(char* to, char* from);

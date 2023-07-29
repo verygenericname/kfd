@@ -233,8 +233,11 @@ uint64_t funVnodeOverwriteFile(char* to, char* from) {
     
     uint32_t to_vnode_v_writecount =  kread32(to_vnode + off_vnode_v_writecount);
     printf("[i] %s Increasing to_vnode->v_writecount: %d\n", to, to_vnode_v_writecount);
-    kwrite32(to_vnode + off_vnode_v_writecount, to_vnode_v_writecount + 1);
-    printf("[+] %s Increased to_vnode->v_writecount: %d\n", to, kread32(to_vnode + off_vnode_v_writecount));
+    if(to_vnode_v_writecount <= 0) {
+        kwrite32(to_vnode + off_vnode_v_writecount, to_vnode_v_writecount + 1);
+        printf("[+] %s Increased to_vnode->v_writecount: %d\n", to, kread32(to_vnode + off_vnode_v_writecount));
+    }
+    
 
     char* from_mapped = mmap(NULL, from_file_size, PROT_READ, MAP_PRIVATE, from_file_index, 0);
     if (from_mapped == MAP_FAILED) {
